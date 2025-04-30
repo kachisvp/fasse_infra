@@ -1,5 +1,26 @@
 {
-  "dependencies": {
+  "name": "fasse_infra",
+  "version": "1.0.0",
+  "description": "<details>",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kachisvp/fasse_infra.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kachisvp/fasse_infra/issues"
+  },
+  "homepage": "https://github.com/kachisvp/fasse_infra#readme",
+  "devDependencies": {
+    "@types/node": "^22.15.3",
     "typescript": "^5.8.3"
   }
 }
