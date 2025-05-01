@@ -29,7 +29,7 @@ npm --version
 ```
 cd "C:\Users\_username_\dev\workspaces\fasse_infra"
 npm init -y
-npm install typescript @types/node --save-dev
+npm install typescript ts-node @types/node --save-dev
 npx tsc --init
 ```
 
