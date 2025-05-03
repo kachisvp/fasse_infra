@@ -35,6 +35,13 @@ npx tsc --init
 
 
 
+## aws-cdk
+コマンドプロンプトを開き、以下のコマンドを実行
+```
+```
+
+
+
 ## Commands
 ### [package.json]に["scripts"].["build"]を記述後は以下でコンパイル可能
 npm run build
