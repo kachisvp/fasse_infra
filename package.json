@@ -1,27 +1,26 @@
 {
-  "name": "fasse_infra",
-  "version": "1.0.0",
-  "description": "<details>",
-  "main": "src/index.ts",
+  "name": "temp",
+  "version": "0.1.0",
+  "bin": {
+    "temp": "bin/temp.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "ts-node src/index.ts"
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/kachisvp/fasse_infra.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/kachisvp/fasse_infra/issues"
-  },
-  "homepage": "https://github.com/kachisvp/fasse_infra#readme",
   "devDependencies": {
-    "@types/node": "^22.15.3",
+    "@types/jest": "^29.5.14",
+    "@types/node": "22.7.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "aws-cdk": "2.1013.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.190.0",
+    "constructs": "^10.0.0"
   }
 }
