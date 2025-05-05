@@ -38,11 +38,18 @@ npx tsc --init
 ## aws-cdk
 コマンドプロンプトを開き、以下のコマンドを実行
 ```
+npm install -g aws-cdk
+mkdir temp; cd temp
+cdk init app --language typescript
 ```
 
 
 
 ## Commands
+### PowerShellで権限を付与してnpmコマンドを実行する方法
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+Get-ExecutionPolicy
+
 ### [package.json]に["scripts"].["build"]を記述後は以下でコンパイル可能
 npm run build
 
@@ -55,9 +62,8 @@ npx tsc
 ### TypeScriptコンパイル
 npx tsc app.ts
 
-### PowerShellで権限を付与してnpmコマンドを実行する方法
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-Get-ExecutionPolicy
+### aws-cdk
+cdk --version
 
 
 
@@ -70,6 +76,7 @@ Get-ExecutionPolicy
 - [TypeScript Deep Dive 日本語版](https://typescript-jp.gitbook.io/deep-dive/getting-started)
 
 ### AWS CDK
+- [AWS CDK CLI のインストール](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/getting-started.html#getting-started-install)
 - [チュートリアル: 最初の AWS CDK アプリを作成する](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/hello-world.html)
 - https://dev.classmethod.jp/articles/aws-cdk-typescript-tutorial/
 - https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/work-with-cdk-typescript.html
