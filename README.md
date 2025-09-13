@@ -98,10 +98,11 @@ cdk --version
 ### AWS CDK
 - [AWS CDK CLI のインストール](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/getting-started.html#getting-started-install)
 - [チュートリアル: 最初の AWS CDK アプリを作成する](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/hello-world.html)
-- https://dev.classmethod.jp/articles/aws-cdk-typescript-tutorial/
 - https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/work-with-cdk-typescript.html
+- https://dev.classmethod.jp/articles/aws-cdk-typescript-tutorial/
 - https://zenn.dev/murakami_koki/articles/81c0bcba772428
 - [AWS CDKを使うためTypeScriptに入門したので図解してみた](https://qiita.com/minorun365/items/0c8a59af95309b64d624)
+- https://catalog.workshops.aws/typescript-and-cdk-for-beginner/ja-JP/40-cdk-introduction/10-create-project/10-cdk-init
 
 ### PowerShell
 - [PowerShell](https://qiita.com/ponsuke0531/items/4629626a3e84bcd9398f)
