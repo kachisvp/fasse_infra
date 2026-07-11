@@ -1,105 +1,8 @@
 <details>
 
-<summary>Mac環境構築</summary>
-
-# Mac 環境構築
-
-## AWS CLI
-
-https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/getting-started-install.html
-
-```
-curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
-sudo installer -pkg ./AWSCLIV2.pkg -target /
-aws --version
-rm -f AWSCLIV2.pkg
-```
-
-## AWS CDK の前提条件
-
-https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/prerequisites.html
-
-### Node.js
-
-https://nodejs.org/ja/download
-
-```
-# nvmをダウンロードしてインストールする：
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-# シェルを再起動する代わりに実行する
-\. "$HOME/.nvm/nvm.sh"
-# Node.jsをダウンロードしてインストールする：
-nvm install 22
-# Node.jsのバージョンを確認する：
-node -v # "v22.19.0"が表示される。 # "v24.3.0"となった
-# npmのバージョンを確認する：
-npm -v # "10.9.3"が表示される。 # "11.4.2"となった
-```
-
-### TypeScript
-
-```
-npm i -g typescript
-# -g でインストールされたパッケージ確認
-npm list -g
-```
-
-## AWS CDK の開始方法
-
-https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/getting-started.html
-
-```
-npm i -g aws-cdk
-npm list -g
-cdk --version
-```
-
-## 認証とアクセスの認証情報
-
-https://docs.aws.amazon.com/ja_jp/cli/v1/userguide/cli-chap-authentication.html
-
-[マネジメントコンソール > IAM > Users] > [Create user]を押下
-[cli]を作成
-
-- マネジメントコンソール利用しない
-- [Attach policies directry] > [AdministratorAccess]を付与
-
-**強力な権限なので、[認証情報 > Access Key > Actions > Deactive]にすること**
-
-以前の不要な記述が存在しないかどうかを確認
-
-```
-cat ~/.aws/config
-cat ~/.aws/credentials
-```
-
-作成した[Access Key], [Secret Key]を設定
-
-```
-aws configure
-```
-
-設定を確認
-
-```
-aws configure list
-```
-
-## チュートリアル: 最初の AWS CDK アプリを作成する
-
-https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/hello-world.html
-
-</details>
-
-<details>
-
 <summary>Windows環境構築</summary>
 
-# Windows 環境構築
-
-## AWS CLI
-
-msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi
+# Windows環境構築
 
 ## Node.js
 
@@ -114,12 +17,11 @@ https://nodejs.org/en
 [Install]を押下
 [Finish]を押下
 
-### コマンドプロンプトを開き、version を確認
+### コマンドプロンプトを開き、versionを確認
 
 ```
 node --version
 npm --version
-npx --version
 ```
 
 ## TypeScript
@@ -128,11 +30,9 @@ npx --version
 
 ```
 cd "C:\Users\_username_\dev\workspaces\fasse_infra"
-# 以下は初回のみで良い
-# npm init -y
-npm i -g typescript ts-node @types/node
-# 以下は初回のみで良い
-# npx tsc --init
+npm init -y
+npm install typescript ts-node @types/node --save-dev
+npx tsc --init
 ```
 
 ## aws-cdk
@@ -140,72 +40,14 @@ npm i -g typescript ts-node @types/node
 コマンドプロンプトを開き、以下のコマンドを実行
 
 ```
-npm i -g aws-cdk
-cdk --version
+npm install -g aws-cdk
+mkdir temp; cd temp
+cdk init app --language typescript
 ```
 
-## 認証とアクセスの認証情報
+[cdk init]した内容にルートフォルダ配下を差し替える
 
-https://docs.aws.amazon.com/ja_jp/cli/v1/userguide/cli-chap-authentication.html
-
-[マネジメントコンソール > IAM > Users] > [Create user]を押下
-[cli]を作成
-
-- マネジメントコンソール利用しない
-- [Attach policies directry] > [AdministratorAccess]を付与
-
-**強力な権限なので、[認証情報 > Access Key > Actions > Deactive]にすること**
-
-以前の不要な記述が存在しないかどうかを確認
-
-```
-cat ~/.aws/config
-cat ~/.aws/credentials
-```
-
-作成した[Access Key], [Secret Key]を設定
-
-```
-aws configure
-```
-
-設定を確認
-
-```
-aws configure list
-```
-
-## チュートリアル: 最初の AWS CDK アプリを作成する
-
-https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/hello-world.html
-
-## Commands
-
-### PowerShell で権限を付与して npm コマンドを実行する方法
-
-~~Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process~~
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-Get-ExecutionPolicy
-
-### [package.json]に["scripts"].["build"]を記述後は以下でコンパイル可能
-
-npm run build
-
-### [package.json]に["scripts"].["start"]を記述後は以下でサーバー起動可能
-
-npm start
-
-### [npx tsc --init]実行後は以下でコンパイル可能
-
-npx tsc
-
-### TypeScript コンパイル
-
-npx tsc app.ts
-
-### aws-cdk
-
-cdk --version
+### Commands
 
 ```
 # Welcome to your CDK TypeScript project
@@ -223,5 +65,66 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 * `npx cdk diff`    compare deployed stack with current state
 * `npx cdk synth`   emits the synthesized CloudFormation template
 ```
+
+## Commands
+
+### PowerShellで権限を付与してnpmコマンドを実行する方法
+
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+Get-ExecutionPolicy
+
+### [package.json]に["scripts"].["build"]を記述後は以下でコンパイル可能
+
+npm run build
+
+### [package.json]に["scripts"].["start"]を記述後は以下でサーバー起動可能
+
+npm start
+
+### [npx tsc --init]実行後は以下でコンパイル可能
+
+npx tsc
+
+### TypeScriptコンパイル
+
+npx tsc app.ts
+
+### aws-cdk
+
+cdk --version
+
+## References
+
+### install
+
+- [【Node.js/TypeScript】比較して理解する ts-node](https://qiita.com/Yasushi-Mo/items/d787ee035f0896071394)
+- [npm よく使うコマンドまとめ](https://qiita.com/standard-software/items/2ac49a409688733c90e7)
+
+### TypeScript
+
+- [TypeScript Deep Dive 日本語版](https://typescript-jp.gitbook.io/deep-dive/getting-started)
+
+### AWS CDK
+
+- [AWS CDK CLI のインストール](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/getting-started.html#getting-started-install)
+- [チュートリアル: 最初の AWS CDK アプリを作成する](https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/hello-world.html)
+- https://docs.aws.amazon.com/ja_jp/cdk/v2/guide/work-with-cdk-typescript.html
+- https://dev.classmethod.jp/articles/aws-cdk-typescript-tutorial/
+- https://zenn.dev/murakami_koki/articles/81c0bcba772428
+- [AWS CDKを使うためTypeScriptに入門したので図解してみた](https://qiita.com/minorun365/items/0c8a59af95309b64d624)
+- https://catalog.workshops.aws/typescript-and-cdk-for-beginner/ja-JP/40-cdk-introduction/10-create-project/10-cdk-init
+
+### PowerShell
+
+- [PowerShell](https://qiita.com/ponsuke0531/items/4629626a3e84bcd9398f)
+
+### HTML
+
+- [HTMLのテンプレート的なの](https://qiita.com/matsui-a/items/8d26f66ded3560d3d004)
+
+### Bookmarks
+
+- [TypeScriptのインストールから実行まで](https://qiita.com/eiji-noguchi/items/8c1d3741ac9f2857b230)
+- [TypeScriptを始めよう ~ すぐにできる実行環境構築 ~](https://qiita.com/Yuki-Kurita/items/5e449e2c05aaeeef80ac)
 
 </details>
