@@ -11,11 +11,10 @@ Flutter (Client) → Amazon API Gateway → AWS Lambda → Amazon DynamoDB
 将来:
 
 ```
-Flutter (Client) → Amazon API Gateway → AWS Lambda → Amazon Aurora MySQL Serverless
+Flutter (Client) → AWS Fargate (SpringBoot) → Amazon Aurora MySQL Serverless
 ```
 
-> TODO: memo.mdの「SpringBoot」項（AWS Fargate稼働）との関係が未整理。
-> 最終形のバックエンドはLambdaのままか、SpringBoot(Fargate)に置き換わるのか確認する。
+第一弾のAPIGateway - Lambda構成は暫定的なWebAPI受口であり、将来的にはSpringBoot(Fargate)がWebAPIを直接提供する構成に置き換わる。
 
 ## データモデル
 
@@ -134,32 +133,63 @@ CREATE TABLE m_menu (
 
 ### 第一弾（DynamoDB）
 
-**未確定 - アクセスパターンの洗い出しから着手する。**
+対象業種は飲食店（テーブル会計）。以下の方針で確定。
 
-DynamoDBはRDBと異なりJOIN/外部キー/UNIQUE制約が無いため、先にアクセスパターンを決めてからテーブル・PK/SK/GSIを設計する。
+**アクセスパターン**
 
-TODO:
+- IDを指定した1件取得
+- 日付範囲での一覧取得（仕入: `purchase_date`、売上: `sales_datetime`）
+- 仕入先/メニュー単位の集計・一覧は第一弾ではスコープ外
 
-- [ ] アクセスパターン一覧を洗い出す（例: 仕入伝票を日付範囲で一覧、仕入先ごとに集計 など）
-- [ ] テーブル構成を決める（シングルテーブル設計 or エンティティごとにテーブル分割）
-- [ ] Partition Key / Sort Key を決める
-- [ ] GSIの要否を決める
-- [ ] `purchase_no` / `sales_no`の一意性の担保方法（条件付き書き込み等）を決める
-- [ ] 金額（DECIMAL相当）をNumberで持つか文字列で持つか決める
-- [ ] ヘッダ+明細の同時登録を`TransactWriteItems`で行うか決める
-- [ ] マスタ（品目・仕入先・メニュー）のテーブル構成を決める
+**テーブル構成**
+
+エンティティごとにテーブルを分ける（7テーブル）。
+
+| テーブル | PK | SK | GSI |
+|---|---|---|---|
+| t_purchase_header | id (UUID) | - | `gsi_purchase_date`: PK=`"PURCHASE_HEADER"`固定, SK=`purchase_date` |
+| t_purchase_detail | purchase_id | id (UUID) | - |
+| t_sales_header | id (UUID) | - | `gsi_sales_datetime`: PK=`"SALES_HEADER"`固定, SK=`sales_datetime` |
+| t_sales_detail | sales_id | id (UUID) | - |
+| m_item | id (UUID) | - | - |
+| m_supplier | id (UUID) | - | - |
+| m_menu | id (UUID) | - | - |
+
+- 明細はヘッダの`id`をPKにすることで「あるヘッダの明細一覧」を`Query`で取得できる（ヘッダ登録時のTransactWriteItemsにもそのまま使える）
+- 日付範囲一覧用のGSIはPKを固定値にする単純な設計。書き込み頻度が低い小規模業務用途を想定しているため許容するが、将来的にホットパーティションが問題になった場合は年月バケット等への見直しを検討する
+
+**マスタデータ**
+
+- m_item / m_supplier / m_menuはCRUD APIを提供する（登録・更新・削除もLambda経由）
+
+**伝票番号（purchase_no / sales_no）**
+
+- Lambda側で日付+連番から生成する（例: `PO-20260712-0001`）
+- 連番はカウンタ用アイテムへの`UpdateItem`（`ADD`）で採番する想定
+
+**金額フィールド**
+
+- DynamoDBのNumber型で保持する
+
+**ヘッダ+明細の同時登録**
+
+- `TransactWriteItems`でアトミックに書き込む
+
+**staff_id**
+
+- 第一弾ではスコープ外。`t_sales_header`からは項目自体を削除する（第一弾のDynamoDBスキーマに含めない）
 
 ## API仕様
+
+認証方式: なし（第一弾は疎通確認優先。将来的な認証導入は別途課題とする）
 
 TODO: OpenAPI定義を`docs/spec/purchase-sales/openapi.yaml`として作成する。
 
 - [ ] エンドポイント一覧（仕入/売上のCRUD、マスタのCRUD）
 - [ ] リクエスト/レスポンススキーマ
-- [ ] 認証方式
 
 ## 未確定事項
 
-- 対象業種・利用シーン（飲食店前提か？）
-- 認証方式
-- 集計・検索のアクセスパターン
-- DynamoDBのキー設計全般
+- CDKのスタック構成（既存`lib/fasse_infra-stack.ts`に追加 or 機能単位で分割）
+- Lambdaのランタイム・実装言語の詳細（Node.js/TypeScript想定でよいか）
+- AWS環境（アカウント/リージョン）、dev/prod等の環境分離方針

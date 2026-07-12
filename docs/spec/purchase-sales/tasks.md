@@ -7,15 +7,15 @@
 
 ## 第一弾（APIGateway - Lambda - DynamoDB）
 
-- [ ] DynamoDBアクセスパターンの確定
-- [ ] DynamoDBテーブル定義（CDK）: マスタ（品目・仕入先・メニュー）
-- [ ] DynamoDBテーブル定義（CDK）: 仕入伝票（ヘッダ+明細）
-- [ ] DynamoDBテーブル定義（CDK）: 売上伝票（ヘッダ+明細）
-- [ ] Lambda実装: マスタCRUD
-- [ ] Lambda実装: 仕入伝票CRUD
-- [ ] Lambda実装: 売上伝票CRUD
-- [ ] APIGateway定義・ルーティング（CDK）
-- [ ] 認証方式の実装
+design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし等）に基づく。
+
+- [ ] DynamoDBテーブル定義（CDK）: m_item, m_supplier, m_menu
+- [ ] DynamoDBテーブル定義（CDK）: t_purchase_header（+ gsi_purchase_date）, t_purchase_detail
+- [ ] DynamoDBテーブル定義（CDK）: t_sales_header（+ gsi_sales_datetime）, t_sales_detail
+- [ ] Lambda実装: マスタCRUD（m_item, m_supplier, m_menu）
+- [ ] Lambda実装: 仕入伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、purchase_no採番含む）
+- [ ] Lambda実装: 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、sales_no採番含む）
+- [ ] APIGateway定義・ルーティング（CDK、認証なし）
 - [ ] 単体テスト
 - [ ] Flutterからの疎通確認
 
