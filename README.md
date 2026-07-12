@@ -1,5 +1,26 @@
 <details>
 
+<summary>よく使うコマンド</summary>
+
+# Commands
+
+```
+npx cdk deploy FasseInfraStack-stg --require-approval never
+npx cdk destroy FasseInfraStack-stg
+
+npx cdk diff FasseInfraStack-stg
+npx cdk synth FasseInfraStack-stg
+npx cdk list
+npm test
+npm run build
+aws logs tail /aws/lambda/<関数名> --follow
+aws dynamodb scan --table-name fasse-stg-m-item
+```
+
+</details>
+
+<details>
+
 <summary>Windows環境構築</summary>
 
 # Windows環境構築

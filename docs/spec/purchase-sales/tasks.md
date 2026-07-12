@@ -20,7 +20,8 @@ design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし�
 - [x] Lambda実装（Node.js + TypeScript）: 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、business_date必須、sales_no採番はbusiness_date単位）
 - [x] APIGateway定義・ルーティング（CDK、認証なし）
 - [x] 単体テスト
-- [ ] Flutterからの疎通確認（stg環境）
+- [x] APIレベルでの疎通確認（stg環境、items/suppliers/purchasesのCRUD・TransactWriteItems・日付範囲一覧を確認済み）
+- [ ] Flutterアプリからの疎通確認（別途Flutterプロジェクト側の対応が必要）
 
 ## 将来（Aurora MySQL Serverlessへの移行）
 
