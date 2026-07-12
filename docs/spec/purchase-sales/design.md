@@ -130,6 +130,7 @@ CREATE TABLE m_menu (
 - PKが`CHAR(36)`（UUID想定）に対し、FK列（`supplier_id`, `purchase_id`, `item_id`, `sales_id`, `menu_id`）が`BIGINT`になっている。型を統一する。
 - `t_purchase_header.supplier_id`にFK制約が付いていない。
 - `staff_id`の参照先マスタ（`m_staff`）が未定義。
+- `m_supplier`に`is_active`が無い（第一弾で論理削除の対象とするため追加が必要）。
 
 ### 第一弾（DynamoDB）
 
@@ -161,6 +162,7 @@ CREATE TABLE m_menu (
 **マスタデータ**
 
 - m_item / m_supplier / m_menuはCRUD APIを提供する（登録・更新・削除もLambda経由）
+- 削除は論理削除とする。DELETE APIが呼ばれてもDynamoDBのアイテムは物理削除せず、`is_active`を`false`に更新する（仕入/売上明細から参照されている可能性があるため）
 
 **伝票番号（purchase_no / sales_no）**
 
@@ -170,6 +172,11 @@ CREATE TABLE m_menu (
 **金額フィールド**
 
 - DynamoDBのNumber型で保持する
+- 金額の整合性（`quantity × unit_price = amount`、明細合計 = `subtotal`等）はLambda側で検証しない。クライアントが計算した値をそのまま信頼して登録する
+
+**日付・日時の扱い**
+
+- `purchase_date` / `sales_datetime`等はJST（UTC+9）固定で扱う。UTC変換は行わず、JSTのローカル時刻をそのままISO 8601文字列（例: `2026-07-12`, `2026-07-12T19:30:00+09:00`）としてDynamoDBに保存する
 
 **ヘッダ+明細の同時登録**
 
@@ -179,6 +186,10 @@ CREATE TABLE m_menu (
 
 - 全洗い替え方式とする。PUT時は既存の明細を`purchase_id`/`sales_id`をキーに`Query`で取得して全件削除し、リクエストの`details`を全て新規挿入として`TransactWriteItems`で書き込む
 - 明細の`id`はリクエストに含めない（レスポンスにのみ含む）。小規模な伝票（明細数が少ない）を想定しているため、書き込み件数の増加は許容する
+
+**ヘッダ+明細の削除**
+
+- 対象ヘッダの明細を`purchase_id`/`sales_id`をキーに`Query`で取得し、ヘッダの削除と明細全件の削除を`TransactWriteItems`でアトミックに行う
 
 **staff_id**
 

@@ -69,7 +69,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      summary: 品目削除
+      summary: 品目削除（論理削除。is_activeをfalseに更新し、アイテム自体は物理削除しない）
       responses:
         "204":
           description: No Content
@@ -135,7 +135,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      summary: 仕入先削除
+      summary: 仕入先削除（論理削除。is_activeをfalseに更新し、アイテム自体は物理削除しない）
       responses:
         "204":
           description: No Content
@@ -201,7 +201,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      summary: メニュー削除
+      summary: メニュー削除（論理削除。is_activeをfalseに更新し、アイテム自体は物理削除しない）
       responses:
         "204":
           description: No Content
@@ -280,7 +280,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      summary: 仕入伝票削除（ヘッダ+明細をまとめて削除）
+      summary: 仕入伝票削除（ヘッダ+明細をTransactWriteItemsでまとめて物理削除）
       responses:
         "204":
           description: No Content
@@ -359,7 +359,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      summary: 売上伝票削除（ヘッダ+明細をまとめて削除）
+      summary: 売上伝票削除（ヘッダ+明細をTransactWriteItemsでまとめて物理削除）
       responses:
         "204":
           description: No Content
@@ -430,6 +430,9 @@ components:
           type: string
         email:
           type: string
+        is_active:
+          type: boolean
+          default: true
     Supplier:
       allOf:
         - $ref: "#/components/schemas/SupplierInput"
@@ -505,6 +508,7 @@ components:
         purchase_date:
           type: string
           format: date
+          description: JST固定
         delivery_date:
           type: string
           format: date
@@ -576,6 +580,7 @@ components:
         sales_datetime:
           type: string
           format: date-time
+          description: JST固定
         table_no:
           type: string
         customer_count:
