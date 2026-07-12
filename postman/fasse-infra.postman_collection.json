@@ -1,0 +1,370 @@
+{
+  "info": {
+    "name": "Fasse 仕入・売上管理API (第一弾 stg)",
+    "description": "docs/spec/purchase-sales/openapi.yaml に対応するPostmanコレクション。POSTリクエストのTestsタブで作成されたidをコレクション変数に自動設定し、後続のGET/PUT/DELETEで {{itemId}} 等として使い回せます。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "apiId", "value": "" },
+    { "key": "region", "value": "ap-northeast-1" },
+    { "key": "stage", "value": "stg" },
+    { "key": "baseUrl", "value": "https://{{apiId}}.execute-api.{{region}}.amazonaws.com/{{stage}}" },
+    { "key": "itemId", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "menuId", "value": "" },
+    { "key": "purchaseId", "value": "" },
+    { "key": "salesId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Items",
+      "item": [
+        {
+          "name": "List Items",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] }
+          }
+        },
+        {
+          "name": "Create Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('itemId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_name\": \"テスト品目\",\n  \"unit\": \"個\",\n  \"standard_price\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Item",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["items", "{{itemId}}"] }
+          }
+        },
+        {
+          "name": "Update Item",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["items", "{{itemId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_name\": \"テスト品目(更新後)\",\n  \"unit\": \"個\",\n  \"standard_price\": 120\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Item (論理削除)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["items", "{{itemId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Suppliers",
+      "item": [
+        {
+          "name": "List Suppliers",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/suppliers", "host": ["{{baseUrl}}"], "path": ["suppliers"] }
+          }
+        },
+        {
+          "name": "Create Supplier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('supplierId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/suppliers", "host": ["{{baseUrl}}"], "path": ["suppliers"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier_name\": \"テスト仕入先\",\n  \"postal_code\": \"100-0001\",\n  \"address\": \"東京都千代田区\",\n  \"phone_number\": \"03-0000-0000\",\n  \"email\": \"supplier@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Supplier",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["suppliers", "{{supplierId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Supplier",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["suppliers", "{{supplierId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier_name\": \"テスト仕入先(更新後)\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Supplier (論理削除)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["suppliers", "{{supplierId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Menus",
+      "item": [
+        {
+          "name": "List Menus",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/menus", "host": ["{{baseUrl}}"], "path": ["menus"] }
+          }
+        },
+        {
+          "name": "Create Menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('menuId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/menus", "host": ["{{baseUrl}}"], "path": ["menus"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"menu_name\": \"テストメニュー\",\n  \"category\": \"フード\",\n  \"standard_price\": 800\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Menu",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/menus/{{menuId}}", "host": ["{{baseUrl}}"], "path": ["menus", "{{menuId}}"] }
+          }
+        },
+        {
+          "name": "Update Menu",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/menus/{{menuId}}", "host": ["{{baseUrl}}"], "path": ["menus", "{{menuId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"menu_name\": \"テストメニュー(更新後)\",\n  \"category\": \"フード\",\n  \"standard_price\": 900\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Menu (論理削除)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/menus/{{menuId}}", "host": ["{{baseUrl}}"], "path": ["menus", "{{menuId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Purchases",
+      "item": [
+        {
+          "name": "List Purchases (日付範囲)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/purchases?from=2026-07-01&to=2026-07-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["purchases"],
+              "query": [
+                { "key": "from", "value": "2026-07-01" },
+                { "key": "to", "value": "2026-07-31" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Purchase (ヘッダ+明細)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('purchaseId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/purchases", "host": ["{{baseUrl}}"], "path": ["purchases"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1000,\n  \"tax_amount\": 100,\n  \"total_amount\": 1100,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 2, \"unit_price\": 500, \"amount\": 1000 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Purchase (ヘッダ+明細)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/purchases/{{purchaseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["purchases", "{{purchaseId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Purchase (明細は全洗い替え)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/purchases/{{purchaseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["purchases", "{{purchaseId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1500,\n  \"tax_amount\": 150,\n  \"total_amount\": 1650,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 3, \"unit_price\": 500, \"amount\": 1500 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Purchase (ヘッダ+明細をTransact削除)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/purchases/{{purchaseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["purchases", "{{purchaseId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "List Sales (営業日範囲)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/sales?from=2026-07-01&to=2026-07-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["sales"],
+              "query": [
+                { "key": "from", "value": "2026-07-01" },
+                { "key": "to", "value": "2026-07-31" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Sales (ヘッダ+明細)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('salesId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/sales", "host": ["{{baseUrl}}"], "path": ["sales"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 2,\n  \"subtotal\": 1600,\n  \"tax_amount\": 160,\n  \"discount_amount\": 0,\n  \"total_amount\": 1760,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 2, \"unit_price\": 800, \"amount\": 1600 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Sales (ヘッダ+明細)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/sales/{{salesId}}", "host": ["{{baseUrl}}"], "path": ["sales", "{{salesId}}"] }
+          }
+        },
+        {
+          "name": "Update Sales (明細は全洗い替え)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/sales/{{salesId}}", "host": ["{{baseUrl}}"], "path": ["sales", "{{salesId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 3,\n  \"subtotal\": 2400,\n  \"tax_amount\": 240,\n  \"discount_amount\": 0,\n  \"total_amount\": 2640,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 3, \"unit_price\": 800, \"amount\": 2400 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Sales (ヘッダ+明細をTransact削除)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/sales/{{salesId}}", "host": ["{{baseUrl}}"], "path": ["sales", "{{salesId}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}
