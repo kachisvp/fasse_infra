@@ -39,7 +39,7 @@ paths:
                 $ref: "#/components/schemas/Item"
   /items/{id}:
     parameters:
-      - $ref: "#/components/parameters/Id"
+      - $ref: "#/components/parameters/MasterId"
     get:
       summary: 品目取得
       responses:
@@ -105,7 +105,7 @@ paths:
                 $ref: "#/components/schemas/Supplier"
   /suppliers/{id}:
     parameters:
-      - $ref: "#/components/parameters/Id"
+      - $ref: "#/components/parameters/MasterId"
     get:
       summary: 仕入先取得
       responses:
@@ -171,7 +171,7 @@ paths:
                 $ref: "#/components/schemas/Menu"
   /menus/{id}:
     parameters:
-      - $ref: "#/components/parameters/Id"
+      - $ref: "#/components/parameters/MasterId"
     get:
       summary: メニュー取得
       responses:
@@ -375,6 +375,13 @@ components:
       schema:
         type: string
         format: uuid
+    MasterId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
 
   responses:
     NotFound:
@@ -407,8 +414,8 @@ components:
         - type: object
           properties:
             id:
-              type: string
-              format: uuid
+              type: integer
+              format: int64
             created_at:
               type: string
               format: date-time
@@ -439,8 +446,8 @@ components:
         - type: object
           properties:
             id:
-              type: string
-              format: uuid
+              type: integer
+              format: int64
             created_at:
               type: string
               format: date-time
@@ -467,8 +474,8 @@ components:
         - type: object
           properties:
             id:
-              type: string
-              format: uuid
+              type: integer
+              format: int64
             created_at:
               type: string
               format: date-time
@@ -481,8 +488,8 @@ components:
       required: [item_id, quantity, unit_price, amount]
       properties:
         item_id:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         quantity:
           type: number
         unit_price:
@@ -500,11 +507,19 @@ components:
 
     PurchaseInput:
       type: object
-      required: [supplier_id, purchase_date, subtotal, tax_amount, total_amount, details]
+      required:
+        [
+          supplier_id,
+          purchase_date,
+          subtotal,
+          tax_amount,
+          total_amount,
+          details,
+        ]
       properties:
         supplier_id:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         purchase_date:
           type: string
           format: date
@@ -556,8 +571,8 @@ components:
       required: [menu_id, quantity, unit_price, amount]
       properties:
         menu_id:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         quantity:
           type: integer
         unit_price:
@@ -575,12 +590,25 @@ components:
 
     SalesInput:
       type: object
-      required: [sales_datetime, subtotal, tax_amount, total_amount, payment_method, details]
+      required:
+        [
+          sales_datetime,
+          business_date,
+          subtotal,
+          tax_amount,
+          total_amount,
+          payment_method,
+          details,
+        ]
       properties:
         sales_datetime:
           type: string
           format: date-time
           description: JST固定
+        business_date:
+          type: string
+          format: date
+          description: 営業日（JST固定）。深夜営業などで日付をまたぐ取引も、実際の営業日をクライアントが指定する
         table_no:
           type: string
         customer_count:
