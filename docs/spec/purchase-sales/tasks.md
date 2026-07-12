@@ -10,15 +10,15 @@
 
 design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし、既存スタックへの追加、Node.js+TypeScript、stg/prod分離等）に基づく。
 
-- [ ] `config.ts`を作成し、stg環境用のパラメータ（アカウントID/リージョン/リソース名等）を定義する
-- [ ] DynamoDBテーブル定義（CDK、`lib/fasse_infra-stack.ts`に追加）: counters（採番用）
-- [ ] DynamoDBテーブル定義（CDK）: m_item, m_supplier, m_menu（idはcountersテーブルで連番採番）
-- [ ] DynamoDBテーブル定義（CDK）: t_purchase_header（+ gsi_purchase_date）, t_purchase_detail
-- [ ] DynamoDBテーブル定義（CDK）: t_sales_header（+ gsi_business_date）, t_sales_detail
-- [ ] Lambda実装（Node.js + TypeScript）: マスタCRUD（m_item, m_supplier, m_menu、id採番・論理削除含む）
-- [ ] Lambda実装（Node.js + TypeScript）: 仕入伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、purchase_no採番はpurchase_date単位）
-- [ ] Lambda実装（Node.js + TypeScript）: 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、business_date必須、sales_no採番はbusiness_date単位）
-- [ ] APIGateway定義・ルーティング（CDK、認証なし）
+- [x] `config.ts`を作成し、stg環境用のパラメータ（アカウントID/リージョン/リソース名等）を定義する
+- [x] DynamoDBテーブル定義（CDK、`lib/fasse_infra-stack.ts`に追加）: counters（採番用）
+- [x] DynamoDBテーブル定義（CDK）: m_item, m_supplier, m_menu（idはcountersテーブルで連番採番）
+- [x] DynamoDBテーブル定義（CDK）: t_purchase_header（+ gsi_purchase_date）, t_purchase_detail
+- [x] DynamoDBテーブル定義（CDK）: t_sales_header（+ gsi_business_date）, t_sales_detail
+- [x] Lambda実装（Node.js + TypeScript）: マスタCRUD（m_item, m_supplier, m_menu、id採番・論理削除含む）
+- [x] Lambda実装（Node.js + TypeScript）: 仕入伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、purchase_no採番はpurchase_date単位）
+- [x] Lambda実装（Node.js + TypeScript）: 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、business_date必須、sales_no採番はbusiness_date単位）
+- [x] APIGateway定義・ルーティング（CDK、認証なし）
 - [ ] 単体テスト
 - [ ] Flutterからの疎通確認（stg環境）
 
