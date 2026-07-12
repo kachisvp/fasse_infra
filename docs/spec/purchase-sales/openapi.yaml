@@ -263,7 +263,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      summary: 仕入伝票更新（ヘッダ+明細をまとめて更新）
+      summary: 仕入伝票更新（ヘッダ+明細をまとめて更新。明細は全洗い替え＝リクエストのdetailsに無い既存明細は削除される）
       requestBody:
         required: true
         content:
@@ -342,7 +342,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      summary: 売上伝票更新（ヘッダ+明細をまとめて更新）
+      summary: 売上伝票更新（ヘッダ+明細をまとめて更新。明細は全洗い替え＝リクエストのdetailsに無い既存明細は削除される）
       requestBody:
         required: true
         content:

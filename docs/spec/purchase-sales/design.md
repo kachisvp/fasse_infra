@@ -175,6 +175,11 @@ CREATE TABLE m_menu (
 
 - `TransactWriteItems`でアトミックに書き込む
 
+**ヘッダ+明細の更新（PUT）**
+
+- 全洗い替え方式とする。PUT時は既存の明細を`purchase_id`/`sales_id`をキーに`Query`で取得して全件削除し、リクエストの`details`を全て新規挿入として`TransactWriteItems`で書き込む
+- 明細の`id`はリクエストに含めない（レスポンスにのみ含む）。小規模な伝票（明細数が少ない）を想定しているため、書き込み件数の増加は許容する
+
 **staff_id**
 
 - 第一弾ではスコープ外。`t_sales_header`からは項目自体を削除する（第一弾のDynamoDBスキーマに含めない）
