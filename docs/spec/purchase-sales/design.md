@@ -183,13 +183,27 @@ CREATE TABLE m_menu (
 
 認証方式: なし（第一弾は疎通確認優先。将来的な認証導入は別途課題とする）
 
-TODO: OpenAPI定義を`docs/spec/purchase-sales/openapi.yaml`として作成する。
+エンドポイント一覧・リクエスト/レスポンススキーマは[openapi.yaml](./openapi.yaml)を参照。
 
-- [ ] エンドポイント一覧（仕入/売上のCRUD、マスタのCRUD）
-- [ ] リクエスト/レスポンススキーマ
+- マスタ（品目/仕入先/メニュー）: `/items`, `/suppliers`, `/menus`（各CRUD）
+- 仕入伝票: `/purchases`（一覧は`from`/`to`で日付範囲指定、登録・更新はヘッダ+明細をまとめて送信）
+- 売上伝票: `/sales`（同上）
+
+## 実装方針
+
+**CDKスタック構成**
+
+- 既存の`lib/fasse_infra-stack.ts`にDynamoDB/Lambda/APIGatewayを追加する（スタック分割はしない）
+
+**Lambda実装**
+
+- Node.js + TypeScriptで実装する
+
+**環境分離**
+
+- stg/prodの2環境に分ける。第一弾はstg環境のみ実装する
+- 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は変数化し、`config.ts`でstgを指定する
 
 ## 未確定事項
 
-- CDKのスタック構成（既存`lib/fasse_infra-stack.ts`に追加 or 機能単位で分割）
-- Lambdaのランタイム・実装言語の詳細（Node.js/TypeScript想定でよいか）
-- AWS環境（アカウント/リージョン）、dev/prod等の環境分離方針
+なし（第一弾のスコープ・設計は本ドキュメントで確定）

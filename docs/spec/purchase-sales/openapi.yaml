@@ -1,0 +1,626 @@
+openapi: 3.0.3
+info:
+  title: Fasse 仕入・売上管理API
+  version: "1.0.0-phase1"
+  description: |
+    第一弾（APIGateway - Lambda - DynamoDB, stg環境）のAPI仕様。
+    認証なし。詳細はdesign.mdを参照。
+
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/stg
+
+paths:
+  /items:
+    get:
+      summary: 品目一覧取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Item"
+    post:
+      summary: 品目登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+  /items/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: 品目取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: 品目更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: 品目削除
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /suppliers:
+    get:
+      summary: 仕入先一覧取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Supplier"
+    post:
+      summary: 仕入先登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+  /suppliers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: 仕入先取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: 仕入先更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: 仕入先削除
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /menus:
+    get:
+      summary: メニュー一覧取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Menu"
+    post:
+      summary: メニュー登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Menu"
+  /menus/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: メニュー取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Menu"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: メニュー更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Menu"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: メニュー削除
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /purchases:
+    get:
+      summary: 仕入伝票一覧取得（日付範囲）
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PurchaseHeader"
+    post:
+      summary: 仕入伝票登録（ヘッダ+明細をTransactWriteItemsで登録、purchase_noはサーバ採番）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+  /purchases/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: 仕入伝票取得（ヘッダ+明細）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: 仕入伝票更新（ヘッダ+明細をまとめて更新）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: 仕入伝票削除（ヘッダ+明細をまとめて削除）
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sales:
+    get:
+      summary: 売上伝票一覧取得（日付範囲）
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesHeader"
+    post:
+      summary: 売上伝票登録（ヘッダ+明細をTransactWriteItemsで登録、sales_noはサーバ採番）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sales"
+  /sales/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: 売上伝票取得（ヘッダ+明細）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sales"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: 売上伝票更新（ヘッダ+明細をまとめて更新）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sales"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: 売上伝票削除（ヘッダ+明細をまとめて削除）
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  schemas:
+    ItemInput:
+      type: object
+      required: [item_name, unit]
+      properties:
+        item_name:
+          type: string
+        unit:
+          type: string
+        standard_price:
+          type: number
+        is_active:
+          type: boolean
+          default: true
+    Item:
+      allOf:
+        - $ref: "#/components/schemas/ItemInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    SupplierInput:
+      type: object
+      required: [supplier_name]
+      properties:
+        supplier_name:
+          type: string
+        postal_code:
+          type: string
+        address:
+          type: string
+        phone_number:
+          type: string
+        email:
+          type: string
+    Supplier:
+      allOf:
+        - $ref: "#/components/schemas/SupplierInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    MenuInput:
+      type: object
+      required: [menu_name, category, standard_price]
+      properties:
+        menu_name:
+          type: string
+        category:
+          type: string
+        standard_price:
+          type: number
+        is_active:
+          type: boolean
+          default: true
+    Menu:
+      allOf:
+        - $ref: "#/components/schemas/MenuInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    PurchaseDetailInput:
+      type: object
+      required: [item_id, quantity, unit_price, amount]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+        quantity:
+          type: number
+        unit_price:
+          type: number
+        amount:
+          type: number
+    PurchaseDetail:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseDetailInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    PurchaseInput:
+      type: object
+      required: [supplier_id, purchase_date, subtotal, tax_amount, total_amount, details]
+      properties:
+        supplier_id:
+          type: string
+          format: uuid
+        purchase_date:
+          type: string
+          format: date
+        delivery_date:
+          type: string
+          format: date
+        subtotal:
+          type: number
+        tax_amount:
+          type: number
+        total_amount:
+          type: number
+        remarks:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseDetailInput"
+    PurchaseHeader:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            purchase_no:
+              type: string
+              readOnly: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    Purchase:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseHeader"
+        - type: object
+          properties:
+            details:
+              type: array
+              items:
+                $ref: "#/components/schemas/PurchaseDetail"
+
+    SalesDetailInput:
+      type: object
+      required: [menu_id, quantity, unit_price, amount]
+      properties:
+        menu_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        unit_price:
+          type: number
+        amount:
+          type: number
+    SalesDetail:
+      allOf:
+        - $ref: "#/components/schemas/SalesDetailInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    SalesInput:
+      type: object
+      required: [sales_datetime, subtotal, tax_amount, total_amount, payment_method, details]
+      properties:
+        sales_datetime:
+          type: string
+          format: date-time
+        table_no:
+          type: string
+        customer_count:
+          type: integer
+          default: 1
+        subtotal:
+          type: number
+        tax_amount:
+          type: number
+        discount_amount:
+          type: number
+          default: 0
+        total_amount:
+          type: number
+        payment_method:
+          type: string
+        remarks:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesDetailInput"
+    SalesHeader:
+      allOf:
+        - $ref: "#/components/schemas/SalesInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            sales_no:
+              type: string
+              readOnly: true
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    Sales:
+      allOf:
+        - $ref: "#/components/schemas/SalesHeader"
+        - type: object
+          properties:
+            details:
+              type: array
+              items:
+                $ref: "#/components/schemas/SalesDetail"
