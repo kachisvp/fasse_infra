@@ -29,6 +29,7 @@ CREATE TABLE m_item (
   item_name VARCHAR(100) NOT NULL,
   unit VARCHAR(20) NOT NULL,
   standard_price DECIMAL(12,2),
+  tax_category ENUM('STANDARD', 'REDUCED', 'EXEMPT') NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -53,7 +54,21 @@ CREATE TABLE m_menu (
   menu_name VARCHAR(100) NOT NULL,
   category VARCHAR(50) NOT NULL,
   standard_price DECIMAL(12,2) NOT NULL,
+  tax_category ENUM('STANDARD', 'REDUCED', 'EXEMPT') NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 消費税率マスタ（税区分ごとの税率を期間で管理する）
+CREATE TABLE m_tax_rate (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  tax_category ENUM('STANDARD', 'REDUCED', 'EXEMPT') NOT NULL,
+  description VARCHAR(50) NOT NULL,
+  rate DECIMAL(5,4) NOT NULL,
+  valid_from DATE NOT NULL,
+  valid_to DATE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP
@@ -85,6 +100,7 @@ CREATE TABLE t_purchase_detail (
   quantity DECIMAL(10,2) NOT NULL,
   unit_price DECIMAL(12,2) NOT NULL,
   amount DECIMAL(12,2) NOT NULL,
+  tax_rate DECIMAL(5,4) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP,
@@ -121,6 +137,7 @@ CREATE TABLE t_sales_detail (
   quantity INT NOT NULL,
   unit_price DECIMAL(12,2) NOT NULL,
   amount DECIMAL(12,2) NOT NULL,
+  tax_rate DECIMAL(5,4) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP,
@@ -141,6 +158,16 @@ CREATE TABLE t_sales_detail (
 - `m_supplier`に`is_active`を追加した（第一弾で論理削除の対象とするため）
 - `t_sales_header`に`business_date`（営業日）を追加した。深夜営業などで日付をまたぐ取引を、実際の会計上の営業日に正しく紐付けるための項目
 - `staff_id`は削除した。日本では伝票単位で担当者を紐付ける文化が無いため、当面不要と判断
+- `m_tax_rate`（消費税率マスタ）を新設し、`m_item` / `m_menu`に`tax_category`、`t_purchase_detail` / `t_sales_detail`に`tax_rate`を追加した（詳細は下記「消費税の扱い」参照）
+
+**消費税の扱い**
+
+- 消費税は「時間軸での改定」（税率そのものの変更）と「区分の並存」（同時期に標準・軽減・非課税が並存する）の2軸を持つため、単一の期間マスタでは表現できない。`m_tax_rate`は`tax_category`（`STANDARD`/`REDUCED`/`EXEMPT`）ごとに`valid_from`/`valid_to`で有効期間を管理する
+- `tax_category`はアプリケーション側でCRUDする対象ではなく消費税法で定まる固定区分のため、独立したマスタテーブル（`m_tax_category`）にはせず、ENUM値として`m_tax_rate` / `m_item` / `m_menu`に直接持たせる
+- `m_item` / `m_menu`の`tax_category`は品目・メニューに紐づく税区分の分類（例: 食材=`REDUCED`、酒類=`STANDARD`）。飲食店のイートイン売上は軽減税率の対象外のため、`m_menu`側は基本的に`STANDARD`が中心になる想定
+- 税率改定時は、既存行を書き換えるのではなく`valid_to`を設定して閉じ、新しい行を追加する追記型の運用を推奨する（過去伝票が参照した税率の履歴を保持するため）。ただし`t_purchase_detail` / `t_sales_detail`は`m_tax_rate`をFK参照せず`tax_rate`を数値でスナップショット保持するため、行を物理削除しても既存伝票には影響しない。誤登録の訂正用にDELETE APIも他マスタと同様に提供する
+- `t_purchase_detail` / `t_sales_detail`の`tax_rate`は、登録時点で適用された税率を明細ごとにスナップショットとして保持する。後日`m_tax_rate`が改定されても過去の伝票の税額計算根拠が変わらないようにするため
+- 1伝票内に複数の`tax_category`の明細が混在しうるため、ヘッダの`tax_amount`は明細ごとに`amount × tax_rate`で計算した値の合計とする（この計算・整合性検証はクライアント側の責務であり、Lambda側では検証しない。既存方針「金額フィールド」を参照）
 
 ### 第一弾（DynamoDB）
 
@@ -154,7 +181,7 @@ CREATE TABLE t_sales_detail (
 
 **テーブル構成**
 
-エンティティごとにテーブルを分ける（8テーブル、採番用の`counters`テーブルを含む）。
+エンティティごとにテーブルを分ける（9テーブル、採番用の`counters`テーブルを含む）。
 
 | テーブル | PK | SK | GSI |
 |---|---|---|---|
@@ -165,6 +192,7 @@ CREATE TABLE t_sales_detail (
 | m_item | id (連番) | - | - |
 | m_supplier | id (連番) | - | - |
 | m_menu | id (連番) | - | - |
+| m_tax_rate | tax_category | valid_from | - |
 | counters | counter_name | - | - |
 
 - 明細はヘッダの`id`をPKにすることで「あるヘッダの明細一覧」を`Query`で取得できる（ヘッダ登録時のTransactWriteItemsにもそのまま使える）
@@ -173,12 +201,14 @@ CREATE TABLE t_sales_detail (
   - `m_item` / `m_supplier` / `m_menu`: マスタの`id`採番用（カウンタキーはエンティティ名固定）
   - `purchase_no#<purchase_date>`: 仕入伝票番号の採番用（`purchase_date`ごとにリセット）
   - `sales_no#<business_date>`: 売上伝票番号の採番用（`business_date`ごとにリセット）
+- `m_tax_rate`はPK=`tax_category`（`STANDARD`/`REDUCED`/`EXEMPT`）、SK=`valid_from`とする。「ある区分・ある日付時点で有効な税率」は`Query`（PK=区分, SK<=対象日, `ScanIndexForward=false`, `Limit=1`）で取得する。`counters`による連番採番は行わない（複合キーで一意性が定まるため）
 
 **マスタデータ**
 
-- m_item / m_supplier / m_menuはCRUD APIを提供する（登録・更新・削除もLambda経由）
-- IDはAuroraの`BIGINT AUTO_INCREMENT`に合わせ、DynamoDB側も`counters`テーブルを使った連番とする（UUIDにしない）
+- m_item / m_supplier / m_menu / m_tax_rateはCRUD APIを提供する（登録・更新・削除もLambda経由）
+- IDはAuroraの`BIGINT AUTO_INCREMENT`に合わせ、DynamoDB側も`counters`テーブルを使った連番とする（UUIDにしない）。ただし`m_tax_rate`は連番ではなく`tax_category`+`valid_from`の複合キーとする（上記参照）
 - 削除は論理削除とする。DELETE APIが呼ばれてもDynamoDBのアイテムは物理削除せず、`is_active`を`false`に更新する（仕入/売上明細から参照されている可能性があるため）
+- `m_tax_rate`は上記3マスタと異なり、`t_purchase_detail` / `t_sales_detail`からFK参照されず`tax_rate`を数値でスナップショット保持するため、DELETE APIは物理削除でよい。税率改定時は`valid_to`を設定する`UpdateItem`と新しい期間の`PutItem`で対応する運用を推奨するが、誤登録の訂正であれば`DeleteItem`で行を削除してよい
 
 **business_date（営業日）**
 
@@ -220,7 +250,8 @@ CREATE TABLE t_sales_detail (
 
 エンドポイント一覧・リクエスト/レスポンススキーマは[openapi.yaml](./openapi.yaml)を参照。
 
-- マスタ（品目/仕入先/メニュー）: `/items`, `/suppliers`, `/menus`（各CRUD）
+- マスタ（品目/仕入先/メニュー）: `/items`, `/suppliers`, `/menus`（各CRUD、削除は論理削除）
+- 消費税率マスタ: `/tax-rates`（各CRUD、削除は物理削除。詳細は「消費税の扱い」参照）
 - 仕入伝票: `/purchases`（一覧は`from`/`to`で日付範囲指定、登録・更新はヘッダ+明細をまとめて送信）
 - 売上伝票: `/sales`（同上）
 
