@@ -625,6 +625,11 @@ components:
           type: number
         tax_amount:
           type: number
+          description: >-
+            明細ごとにamount×tax_rateを端数処理せず算出→同一tax_rateの明細でグルーピングして端数処理せず合計→
+            グループごとに端数処理（切り捨て）→各グループの端数処理後の値を合計、の順で計算した値。
+            インボイス制度が「1つの適格請求書につき税率ごとに1回の端数処理」を義務付けているため、
+            明細ごとに都度端数処理してから合計する実装は行わない。計算・整合性検証はクライアント側の責務でありLambda側では検証しない
         total_amount:
           type: number
         remarks:
@@ -715,6 +720,11 @@ components:
           type: number
         tax_amount:
           type: number
+          description: >-
+            明細ごとにamount×tax_rateを端数処理せず算出→同一tax_rateの明細でグルーピングして端数処理せず合計→
+            グループごとに端数処理（切り捨て）→各グループの端数処理後の値を合計、の順で計算した値。
+            インボイス制度が「1つの適格請求書につき税率ごとに1回の端数処理」を義務付けているため、
+            明細ごとに都度端数処理してから合計する実装は行わない。計算・整合性検証はクライアント側の責務でありLambda側では検証しない
         discount_amount:
           type: number
           default: 0
