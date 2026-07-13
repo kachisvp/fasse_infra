@@ -208,6 +208,80 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /tax-rates:
+    get:
+      summary: 消費税率マスタ一覧取得
+      parameters:
+        - name: tax_category
+          in: query
+          required: false
+          description: 指定時はこの税区分のみを絞り込む（Queryで取得）。未指定時は全件Scan
+          schema:
+            $ref: "#/components/schemas/TaxCategory"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaxRate"
+    post:
+      summary: 消費税率登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxRateInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxRate"
+  /tax-rates/{taxCategory}/{validFrom}:
+    parameters:
+      - $ref: "#/components/parameters/TaxCategoryPath"
+      - $ref: "#/components/parameters/ValidFrom"
+    get:
+      summary: 消費税率取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxRate"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: 消費税率更新（tax_category・valid_fromはパスの値が優先され、リクエストボディの値は無視される。税率改定時はvalid_toの設定＋新期間のPOSTで対応するのが基本運用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxRateUpdateInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxRate"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: 消費税率削除（物理削除。仕入/売上明細はtax_rateを数値でスナップショット保持しFK参照しないため、削除しても既存伝票に影響しない）
+      responses:
+        "204":
+          description: No Content
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /purchases:
     get:
       summary: 仕入伝票一覧取得（日付範囲）
@@ -382,6 +456,19 @@ components:
       schema:
         type: integer
         format: int64
+    TaxCategoryPath:
+      name: taxCategory
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/TaxCategory"
+    ValidFrom:
+      name: validFrom
+      in: path
+      required: true
+      schema:
+        type: string
+        format: date
 
   responses:
     NotFound:
@@ -397,7 +484,7 @@ components:
   schemas:
     ItemInput:
       type: object
-      required: [item_name, unit]
+      required: [item_name, unit, tax_category]
       properties:
         item_name:
           type: string
@@ -405,6 +492,8 @@ components:
           type: string
         standard_price:
           type: number
+        tax_category:
+          $ref: "#/components/schemas/TaxCategory"
         is_active:
           type: boolean
           default: true
@@ -457,7 +546,7 @@ components:
 
     MenuInput:
       type: object
-      required: [menu_name, category, standard_price]
+      required: [menu_name, category, standard_price, tax_category]
       properties:
         menu_name:
           type: string
@@ -465,6 +554,8 @@ components:
           type: string
         standard_price:
           type: number
+        tax_category:
+          $ref: "#/components/schemas/TaxCategory"
         is_active:
           type: boolean
           default: true
@@ -485,7 +576,7 @@ components:
 
     PurchaseDetailInput:
       type: object
-      required: [item_id, quantity, unit_price, amount]
+      required: [item_id, quantity, unit_price, amount, tax_rate]
       properties:
         item_id:
           type: integer
@@ -496,6 +587,9 @@ components:
           type: number
         amount:
           type: number
+        tax_rate:
+          type: number
+          description: "登録時点で適用された税率のスナップショット（例: 0.08, 0.10）。税率マスタが後日改定されても値は変わらない"
     PurchaseDetail:
       allOf:
         - $ref: "#/components/schemas/PurchaseDetailInput"
@@ -568,7 +662,7 @@ components:
 
     SalesDetailInput:
       type: object
-      required: [menu_id, quantity, unit_price, amount]
+      required: [menu_id, quantity, unit_price, amount, tax_rate]
       properties:
         menu_id:
           type: integer
@@ -579,6 +673,9 @@ components:
           type: number
         amount:
           type: number
+        tax_rate:
+          type: number
+          description: "登録時点で適用された税率のスナップショット（例: 0.08, 0.10）。税率マスタが後日改定されても値は変わらない"
     SalesDetail:
       allOf:
         - $ref: "#/components/schemas/SalesDetailInput"
@@ -657,3 +754,51 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/SalesDetail"
+
+    TaxCategory:
+      type: string
+      enum: [STANDARD, REDUCED, EXEMPT]
+      description: 標準税率/軽減税率/非課税。消費税法で定まる固定区分のため独立マスタにはせず、ENUM値として持つ
+
+    TaxRateInput:
+      type: object
+      required: [tax_category, description, rate, valid_from]
+      properties:
+        tax_category:
+          $ref: "#/components/schemas/TaxCategory"
+        description:
+          type: string
+          description: "税区分の概要（例: 標準税率, 軽減税率(食品等), 非課税）"
+        rate:
+          type: number
+          description: "税率（例: 0.10, 0.08, 0）"
+        valid_from:
+          type: string
+          format: date
+        valid_to:
+          type: string
+          format: date
+          description: 未設定の場合は現在も有効
+    TaxRate:
+      allOf:
+        - $ref: "#/components/schemas/TaxRateInput"
+        - type: object
+          properties:
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+    TaxRateUpdateInput:
+      type: object
+      required: [description, rate]
+      description: tax_category・valid_fromはパスパラメータで指定するため含めない
+      properties:
+        description:
+          type: string
+        rate:
+          type: number
+        valid_to:
+          type: string
+          format: date

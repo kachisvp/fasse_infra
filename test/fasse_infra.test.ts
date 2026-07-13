@@ -18,14 +18,24 @@ describe('FasseInfraStack', () => {
     template = Template.fromStack(stack);
   });
 
-  test('DynamoDBテーブルが8個（counters, マスタ3, 仕入2, 売上2）作成される', () => {
-    template.resourceCountIs('AWS::DynamoDB::Table', 8);
+  test('DynamoDBテーブルが9個（counters, マスタ3, 消費税率マスタ1, 仕入2, 売上2）作成される', () => {
+    template.resourceCountIs('AWS::DynamoDB::Table', 9);
   });
 
   test('countersテーブルがcounter_nameをPKに持つ', () => {
     template.hasResourceProperties('AWS::DynamoDB::Table', {
       TableName: 'fasse-stg-test-counters',
       KeySchema: [{ AttributeName: 'counter_name', KeyType: 'HASH' }],
+    });
+  });
+
+  test('m_tax_rateがtax_category(PK) + valid_from(SK)の複合キーを持つ', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'fasse-stg-test-m-tax-rate',
+      KeySchema: [
+        { AttributeName: 'tax_category', KeyType: 'HASH' },
+        { AttributeName: 'valid_from', KeyType: 'RANGE' },
+      ],
     });
   });
 
@@ -43,8 +53,8 @@ describe('FasseInfraStack', () => {
     });
   });
 
-  test('Lambda関数が5個（items/suppliers/menus/purchases/sales）作成される', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 5);
+  test('Lambda関数が6個（items/suppliers/menus/tax-rates/purchases/sales）作成される', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 6);
   });
 
   test('APIGatewayのRestApiが1個作成される', () => {

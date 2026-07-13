@@ -49,6 +49,15 @@ export class FasseInfraStack extends cdk.Stack {
       removalPolicy,
     });
 
+    // 消費税率マスタ（tax_category + valid_fromの複合キーで期間管理する。連番採番は行わない）
+    const taxRateTable = new dynamodb.Table(this, 'TaxRateTable', {
+      tableName: `${resourcePrefix}-m-tax-rate`,
+      partitionKey: { name: 'tax_category', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'valid_from', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+    });
+
     // 仕入（IDはUUID。detailはヘッダのidをPKに持つ）
     const purchaseHeaderTable = new dynamodb.Table(this, 'PurchaseHeaderTable', {
       tableName: `${resourcePrefix}-t-purchase-header`,
@@ -157,6 +166,26 @@ export class FasseInfraStack extends cdk.Stack {
     menuTable.grantReadWriteData(menusFunction);
     countersTable.grantReadWriteData(menusFunction);
     addCrudResource('menus', menusFunction);
+
+    // 消費税率マスタ: tax-rates（tax_category + valid_fromの複合キーのため{id}方式ではなく専用ルーティングを行う。
+    // t_purchase_detail/t_sales_detailからFK参照されず物理削除が可能なため、他マスタのcountersテーブルは使わない）
+    const taxRatesFunction = new lambdaNodejs.NodejsFunction(this, 'TaxRatesFunction', {
+      ...commonFunctionProps,
+      entry: path.join(__dirname, 'lambda', 'taxRates.ts'),
+      environment: {
+        TAX_RATE_TABLE: taxRateTable.tableName,
+      },
+    });
+    taxRateTable.grantReadWriteData(taxRatesFunction);
+
+    const taxRatesIntegration = new apigateway.LambdaIntegration(taxRatesFunction);
+    const taxRatesCollection = api.root.addResource('tax-rates');
+    taxRatesCollection.addMethod('GET', taxRatesIntegration);
+    taxRatesCollection.addMethod('POST', taxRatesIntegration);
+    const taxRateSingle = taxRatesCollection.addResource('{taxCategory}').addResource('{validFrom}');
+    taxRateSingle.addMethod('GET', taxRatesIntegration);
+    taxRateSingle.addMethod('PUT', taxRatesIntegration);
+    taxRateSingle.addMethod('DELETE', taxRatesIntegration);
 
     // 仕入伝票: purchases（ヘッダ+明細）
     const purchasesFunction = new lambdaNodejs.NodejsFunction(this, 'PurchasesFunction', {

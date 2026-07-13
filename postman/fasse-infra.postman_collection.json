@@ -12,6 +12,8 @@
     { "key": "itemId", "value": "" },
     { "key": "supplierId", "value": "" },
     { "key": "menuId", "value": "" },
+    { "key": "taxRateCategory", "value": "" },
+    { "key": "taxRateValidFrom", "value": "" },
     { "key": "purchaseId", "value": "" },
     { "key": "salesId", "value": "" }
   ],
@@ -46,7 +48,7 @@
             "url": { "raw": "{{baseUrl}}/items", "host": ["{{baseUrl}}"], "path": ["items"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"item_name\": \"テスト品目\",\n  \"unit\": \"個\",\n  \"standard_price\": 100\n}"
+              "raw": "{\n  \"item_name\": \"テスト品目\",\n  \"unit\": \"個\",\n  \"standard_price\": 100,\n  \"tax_category\": \"REDUCED\"\n}"
             }
           }
         },
@@ -65,7 +67,7 @@
             "url": { "raw": "{{baseUrl}}/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["items", "{{itemId}}"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"item_name\": \"テスト品目(更新後)\",\n  \"unit\": \"個\",\n  \"standard_price\": 120\n}"
+              "raw": "{\n  \"item_name\": \"テスト品目(更新後)\",\n  \"unit\": \"個\",\n  \"standard_price\": 120,\n  \"tax_category\": \"REDUCED\"\n}"
             }
           }
         },
@@ -182,7 +184,7 @@
             "url": { "raw": "{{baseUrl}}/menus", "host": ["{{baseUrl}}"], "path": ["menus"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"menu_name\": \"テストメニュー\",\n  \"category\": \"フード\",\n  \"standard_price\": 800\n}"
+              "raw": "{\n  \"menu_name\": \"テストメニュー\",\n  \"category\": \"フード\",\n  \"standard_price\": 800,\n  \"tax_category\": \"STANDARD\"\n}"
             }
           }
         },
@@ -201,7 +203,7 @@
             "url": { "raw": "{{baseUrl}}/menus/{{menuId}}", "host": ["{{baseUrl}}"], "path": ["menus", "{{menuId}}"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"menu_name\": \"テストメニュー(更新後)\",\n  \"category\": \"フード\",\n  \"standard_price\": 900\n}"
+              "raw": "{\n  \"menu_name\": \"テストメニュー(更新後)\",\n  \"category\": \"フード\",\n  \"standard_price\": 900,\n  \"tax_category\": \"STANDARD\"\n}"
             }
           }
         },
@@ -210,6 +212,93 @@
           "request": {
             "method": "DELETE",
             "url": { "raw": "{{baseUrl}}/menus/{{menuId}}", "host": ["{{baseUrl}}"], "path": ["menus", "{{menuId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tax Rates",
+      "item": [
+        {
+          "name": "List Tax Rates",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/tax-rates", "host": ["{{baseUrl}}"], "path": ["tax-rates"] }
+          }
+        },
+        {
+          "name": "List Tax Rates (区分で絞り込み)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tax-rates?tax_category=STANDARD",
+              "host": ["{{baseUrl}}"],
+              "path": ["tax-rates"],
+              "query": [{ "key": "tax_category", "value": "STANDARD" }]
+            }
+          }
+        },
+        {
+          "name": "Create Tax Rate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('taxRateCategory', body.tax_category);",
+                  "pm.collectionVariables.set('taxRateValidFrom', body.valid_from);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/tax-rates", "host": ["{{baseUrl}}"], "path": ["tax-rates"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tax_category\": \"STANDARD\",\n  \"description\": \"標準税率\",\n  \"rate\": 0.10,\n  \"valid_from\": \"2019-10-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Tax Rate",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/tax-rates/{{taxRateCategory}}/{{taxRateValidFrom}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tax-rates", "{{taxRateCategory}}", "{{taxRateValidFrom}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Tax Rate (valid_toを設定して期間を閉じる)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/tax-rates/{{taxRateCategory}}/{{taxRateValidFrom}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tax-rates", "{{taxRateCategory}}", "{{taxRateValidFrom}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"標準税率\",\n  \"rate\": 0.10,\n  \"valid_to\": \"2026-12-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Tax Rate (物理削除)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/tax-rates/{{taxRateCategory}}/{{taxRateValidFrom}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tax-rates", "{{taxRateCategory}}", "{{taxRateValidFrom}}"]
+            }
           }
         }
       ]
@@ -252,7 +341,7 @@
             "url": { "raw": "{{baseUrl}}/purchases", "host": ["{{baseUrl}}"], "path": ["purchases"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1000,\n  \"tax_amount\": 100,\n  \"total_amount\": 1100,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 2, \"unit_price\": 500, \"amount\": 1000 }\n  ]\n}"
+              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1000,\n  \"tax_amount\": 80,\n  \"total_amount\": 1080,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 2, \"unit_price\": 500, \"amount\": 1000, \"tax_rate\": 0.08 }\n  ]\n}"
             }
           }
         },
@@ -279,7 +368,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1500,\n  \"tax_amount\": 150,\n  \"total_amount\": 1650,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 3, \"unit_price\": 500, \"amount\": 1500 }\n  ]\n}"
+              "raw": "{\n  \"supplier_id\": {{supplierId}},\n  \"purchase_date\": \"2026-07-12\",\n  \"subtotal\": 1500,\n  \"tax_amount\": 120,\n  \"total_amount\": 1620,\n  \"details\": [\n    { \"item_id\": {{itemId}}, \"quantity\": 3, \"unit_price\": 500, \"amount\": 1500, \"tax_rate\": 0.08 }\n  ]\n}"
             }
           }
         },
@@ -334,7 +423,7 @@
             "url": { "raw": "{{baseUrl}}/sales", "host": ["{{baseUrl}}"], "path": ["sales"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 2,\n  \"subtotal\": 1600,\n  \"tax_amount\": 160,\n  \"discount_amount\": 0,\n  \"total_amount\": 1760,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 2, \"unit_price\": 800, \"amount\": 1600 }\n  ]\n}"
+              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 2,\n  \"subtotal\": 1600,\n  \"tax_amount\": 160,\n  \"discount_amount\": 0,\n  \"total_amount\": 1760,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 2, \"unit_price\": 800, \"amount\": 1600, \"tax_rate\": 0.10 }\n  ]\n}"
             }
           }
         },
@@ -353,7 +442,7 @@
             "url": { "raw": "{{baseUrl}}/sales/{{salesId}}", "host": ["{{baseUrl}}"], "path": ["sales", "{{salesId}}"] },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 3,\n  \"subtotal\": 2400,\n  \"tax_amount\": 240,\n  \"discount_amount\": 0,\n  \"total_amount\": 2640,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 3, \"unit_price\": 800, \"amount\": 2400 }\n  ]\n}"
+              "raw": "{\n  \"sales_datetime\": \"2026-07-12T20:00:00+09:00\",\n  \"business_date\": \"2026-07-12\",\n  \"table_no\": \"A1\",\n  \"customer_count\": 3,\n  \"subtotal\": 2400,\n  \"tax_amount\": 240,\n  \"discount_amount\": 0,\n  \"total_amount\": 2640,\n  \"payment_method\": \"cash\",\n  \"details\": [\n    { \"menu_id\": {{menuId}}, \"quantity\": 3, \"unit_price\": 800, \"amount\": 2400, \"tax_rate\": 0.10 }\n  ]\n}"
             }
           }
         },
