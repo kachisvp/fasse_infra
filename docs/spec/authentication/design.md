@@ -5,48 +5,55 @@
 ```mermaid
 flowchart TB
     subgraph Frontend["Flutter-Web"]
-        FE_LOCAL["ENV=local: .env AccessKey"]
-        FE_DEMO["ENV=demo/prod: Cognito Hosted UI"]
+        FE_LOCAL["ENV=local: .env AccessKey(ローカル実行)"]
+        FE_STG["ENV=stg: Cognito Hosted UI(AWSホスティング)"]
     end
 
-    subgraph AuthHub["JWT発行基盤 (API Gateway + Lambda)"]
-        RouteA["ルートA: AccessKey検証"]
-        RouteB["ルートB: Cognito ID Token検証(JWKS)"]
-        KMSSign["AWS KMS Sign (非対称鍵)"]
+    subgraph StgEnv["stg環境(CDKスタック・唯一の永続的バックエンド)"]
+        RouteA_Stg["ルートA: AccessKey検証"]
+        RouteB_Stg["ルートB: Cognito ID Token検証(JWKS)"]
+        StgAPI["WebAPI受口(stg): 開発初期Lambda(Mock) → 開発後期Fargate(Spring Boot)"]
+        StgDB["データストア(stg): 開発初期DynamoDB(Mock) → 開発後期Aurora MySQL Serverless"]
     end
+
+    subgraph DevEnv["dev環境(CDKスタック・stg反映前の一時サンドボックス。動作確認後cdk destroyで破棄)"]
+        RouteA_Dev["ルートA: AccessKey検証(stgのミラー)"]
+        RouteB_Dev["ルートB: Cognito ID Token検証(stgのミラー)"]
+        DevAPI["WebAPI受口(dev): stgと同一構成"]
+        DevDB["データストア(dev): stgと同一構成"]
+    end
+
+    KMSSign["AWS KMS Sign (dev/stg共用の非対称鍵)"]
 
     subgraph Cognito["Amazon Cognito User Pool"]
     end
 
-    subgraph WebAPI["WebAPI受口"]
-        MockAPI["開発初期: API Gateway + Lambda (Mock)"]
-        FargateAPI["開発後期: Fargate (Spring Boot)"]
-    end
+    FE_LOCAL -->|AccessKey| RouteA_Stg
+    FE_STG -->|ログイン| Cognito
+    Cognito -->|ID Token| RouteB_Stg
+    RouteA_Stg --> KMSSign
+    RouteB_Stg --> KMSSign
+    KMSSign -->|JWT| Frontend
 
-    subgraph DataStore["データストア"]
-        DynamoDB["開発初期: DynamoDB (Mock)"]
-        Aurora["開発後期: Aurora MySQL Serverless"]
-    end
+    FE_LOCAL -->|JWT付きリクエスト| StgAPI
+    FE_STG -->|JWT付きリクエスト| StgAPI
+    StgAPI --> StgDB
 
-    FE_LOCAL -->|AccessKey| RouteA
-    FE_DEMO -->|ログイン| Cognito
-    Cognito -->|ID Token| RouteB
-    RouteA --> KMSSign
-    RouteB --> KMSSign
-    KMSSign -->|自前JWT| Frontend
-
-    FE_LOCAL -->|JWT付きリクエスト| MockAPI
-    FE_DEMO -->|JWT付きリクエスト| MockAPI
-    MockAPI -.移行.-> FargateAPI
-    MockAPI --> DynamoDB
-    FargateAPI --> Aurora
+    RouteA_Dev -.検証用.-> KMSSign
+    Cognito -.検証用.-> RouteB_Dev
+    RouteB_Dev -.検証用.-> KMSSign
+    DevAPI -.検証用.-> DevDB
 ```
+
+ローカル実行のフロントエンド(`ENV=local`)・AWSホスト済みフロントエンド(`ENV=stg`)は、いずれも唯一の永続的バックエンドである **stg環境** に接続する(REQ-107)。dev環境はstg環境への変更反映前にバックエンドを一時的に検証するためのサンドボックスであり、stg環境と同一構成(ルートA・ルートB双方)をミラーするが、通常のフロントエンドからは接続しない。dev環境のルートBは専用のCognito User Poolを持たず、stg用のプールを共用する。KMSキーはdev環境・stg環境で単一のものを共用する(REQ-108)。dev環境は動作確認が完了し次第`cdk destroy`で速やかに破棄し、常時稼働させないことで露出期間を最小化する(REQ-109)。
 
 ## 2. 設計方針(トークン交換パターン)
 
 Cognito・AccessKeyのいずれのログイン経路であっても、最終的にWebAPI受口に渡されるトークンは**KMSの非対称鍵で署名した単一形式のJWT**に統一する(トークン交換 / Token Exchangeパターン)。
 
 これにより、WebAPI受口(Spring Boot / Lambda Mock)は発行元の違い(AccessKeyかCognitoか)を意識せず、常に1つの公開鍵で検証すればよい。マルチ発行者(multi-issuer)対応は不要とする。
+
+署名鍵(KMSキー)はdev環境・stg環境で単一のものを共用する(REQ-108)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであるため、鍵を分離する必要はなく、両環境で発行されるJWTは互換性を持つ。
 
 ## 3. コンポーネント設計
 
@@ -59,6 +66,13 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 | `POST /auth/token` (ルートA) | `{ "accessKey": "xxxx" }` | 事前登録リストと照合 → OKならKMS.Sign |
 | `POST /auth/token/cognito` (ルートB) | `{ "idToken": "xxxx" }`(Cognito ID Token) | CognitoのJWKSで署名検証 → OKならKMS.Sign |
 
+**ルートA・ルートBの環境別デプロイ方針(REQ-107)**
+
+- ルートA(`POST /auth/token`)・ルートB(`POST /auth/token/cognito`)のAPI GatewayリソースおよびLambda関数は、stg環境のCDKスタックに常設する。ローカル実行のフロントエンド(`ENV=local`)・AWSホスト済みフロントエンド(`ENV=stg`)は、いずれもstg環境のこれらのエンドポイントに接続する。
+- dev環境のCDKスタックは、stg環境への変更反映前にバックエンドの変更(Lambda/Spring Bootのロジック等)を一時的に検証するためのサンドボックスであり、stg環境と同一構成(ルートA・ルートB双方)をミラーする。通常のフロントエンドはdev環境には接続しない。
+- CDK実装上は、ルートA・ルートBに対応するConstructを共通化し、dev環境用スタック・stg環境用スタックの双方から同一Constructをインスタンス化することで構成差分を最小化する。
+- 現時点で実際に構築するCDKスタックはdev環境・stg環境のみであり、prod環境のスタックは構築しない(requirements.md 2.スコープ参照)。
+
 **KMS署名処理(共通ロジック)**
 
 1. JWTヘッダー(`{"alg":"RS256","typ":"JWT"}`)とペイロード(`sub`, `iss`, `iat`, `exp` 等)をそれぞれBase64URLエンコードし、`.`で結合(署名対象文字列)。
@@ -70,14 +84,16 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 
 **AccessKey管理(ルートA)**
 
-- ランダムな文字列(例: `openssl rand -base64 32`)を1つ以上生成し、Lambdaの環境変数・SecretsManager・またはDynamoDBの許可リストに登録する。
+- AccessKeyはメンバーごとに個別発行する(共通の単一AccessKeyは使用しない。REQ-102準拠)。ランダムな文字列(例: `openssl rand -base64 32`)をメンバーごとに生成し、Lambdaの環境変数・SecretsManager・またはDynamoDBの許可リストに登録する。
 - 配布はアプリ外の経路(パスワードマネージャーの共有機能、社内チャットの個人DM等)で行い、リポジトリやビルド成果物には含めない。
-- 監査要件がある場合は、AccessKeyをメンバーごとに個別発行し、自前JWTの`sub`にユーザー識別子を設定できるようにする(REQ-106準拠)。
+- 発行する自前JWTの`sub`には、AccessKeyに対応するメンバー識別子を設定する(REQ-102準拠)。
+- dev環境はstg環境をミラーするため、同一のメンバー別AccessKeyセットをdev環境にも配布する(REQ-108準拠)。
 
 **Cognito ID Token検証(ルートB)**
 
 - CognitoのJWKSエンドポイント(`https://cognito-idp.<region>.amazonaws.com/<userPoolId>/.well-known/jwks.json`)から公開鍵を取得し、署名・`iss`・`aud`(Client ID)・`exp`を検証する。
 - 検証OK後、トークン内の`sub`(または`email`)を自前JWTの`sub`クレームに引き継ぐ。
+- dev環境のルートBは専用のCognito User Poolを持たず、stg環境のCognito User Poolを共用してID Tokenを検証する(REQ-107準拠)。
 
 ### 3.2 KMSキー設計
 
@@ -88,8 +104,9 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 | 対応するJWT alg | `RS256` |
 | 秘密鍵の扱い | KMS内に閉じたまま。エクスポート不可 |
 | 公開鍵の扱い | `aws kms get-public-key` でエクスポートし、PEM形式に変換してWebAPI受口(Spring Boot / Lambda Mock)に配布・設置 |
+| 環境共用 | dev環境・stg環境で単一のKMSキーを共用する(REQ-108)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであるため、鍵を分離する必要はない |
 
-同一のKMSキーを、開発初期(Lambda Mock発行)から開発後期(Fargate/Spring Boot発行に切り替えた場合)まで継続して使用可能。IAMロール(Lambda実行ロール → 将来的にFargateタスクロール)側の権限切り替えのみで対応する。
+同一のKMSキーを、開発初期(Lambda Mock発行)から開発後期(Fargate/Spring Boot発行に切り替えた場合)まで、またdev環境・stg環境の間でも継続して使用する。IAMロール(Lambda実行ロール → 将来的にFargateタスクロール)側の権限切り替えのみで対応する。dev環境・stg環境それぞれのIAMロールに対し、共用のKMSキーへの`kms:Sign`・`kms:GetPublicKey`を許可する。
 
 ### 3.3 WebAPI受口の検証ロジック(Spring Boot / Lambda Mock 共通)
 
@@ -143,15 +160,17 @@ if (env == 'local') {
   - `ENV=local`: `.env`のAccessKeyで自動的にルートAへ再送信し、JWTを再取得後、元のリクエストをリトライする。
   - `ENV=local`以外: SecureStorageのJWTを破棄し、Cognitoログイン画面へ遷移する。
 
-**環境変数・ビルドコマンド例**
+**ビルドフレーバー・ビルドコマンド例**
 
-| 環境 | ビルドコマンド例 |
-|---|---|
-| ローカル開発 | `flutter run --dart-define=ENV=local` |
-| 検証環境(デモ) | `flutter build web --dart-define=ENV=demo` |
-| 本番 | `flutter build web --dart-define=ENV=prod` |
+フロントエンドのビルドフレーバー名(`local`/`stg`/`prod`)と、AWSバックエンド環境名(`dev`/`stg`/`prod`)は別概念である(`stg`/`prod`は名称が一致するが、`local`とAWSの`dev`環境は異なる)。
 
-`.env`はローカル開発時のみ参照され、`ENV=demo`/`ENV=prod`でビルドした成果物には`.env`由来の値を一切含めない(Assetからも除外する)。
+| ビルドフレーバー | ビルドコマンド例 | 接続先バックエンド |
+|---|---|---|
+| local | `flutter run --dart-define=ENV=local` | AWS stg環境 |
+| stg | `flutter build web --dart-define=ENV=stg` | AWS stg環境 |
+| prod | `flutter build web --dart-define=ENV=prod` | AWS prod環境(現時点では未構築) |
+
+`.env`は`ENV=local`でのみ参照され、`ENV=stg`/`ENV=prod`でビルドした成果物には`.env`由来の値を一切含めない(Assetからも除外する)。
 
 ## 4. 移行方針(Mock → 本番相当構成)
 
@@ -171,14 +190,20 @@ if (env == 'local') {
 
 ## 6. セキュリティ設計上の留意事項
 
+- ルートA(AccessKey)はstg環境のCDKスタックに常設される(REQ-107)。ローカル実行のフロントエンドがstg環境のWebAPIに直接接続する設計上の要件であり、AccessKeyの漏洩リスクはstg環境全体に及ぶ。緩和策として、AccessKeyのメンバー個別発行・厳重な配布管理(3.1節参照)、stg環境への投入データをテスト用ダミーデータに限定すること(REQ-105関連)、およびNFR-004のWAF併用(stg環境は必須)を徹底する。
+- KMSキーはdev環境・stg環境で単一のものを共用する(REQ-108)。dev環境はstg環境と同一のJWTトラストルーツを持つ検証用サンドボックスであり、意図的に鍵を分離していない。そのためdev環境も攻撃対象となり得るが、REQ-109により動作確認後は速やかに`cdk destroy`で破棄する運用とし、常時稼働させないことで露出期間を最小化する(dev環境はWAF設置を必須としない)。
 - KMS秘密鍵は非公開のまま運用し、署名は必ずKMS `Sign` APIを経由する(NFR-002)。
-- AccessKeyはリポジトリ非管理とし、`.env.sample`(ダミー値)のみをリポジトリに含める(NFR-003)。
-- 検証環境・本番環境では、CloudFront + WAF(IP制限またはBasic認証)を外側の防御として併用することを推奨する(別紙セキュリティ設計にて詳細化)。
-- JWT有効期限は開発中30日、本番運用開始前に1〜2時間程度への短縮を別チケットで検討する。
+- AccessKeyはメンバー個別発行とし、リポジトリ非管理とする。`.env.sample`(ダミー値)のみをリポジトリに含める(NFR-003)。
+- stg環境では、CloudFront + WAF(IP制限またはBasic認証)を外側の防御として必須で併用する(NFR-004。方式の詳細は別紙セキュリティ設計にて詳細化)。dev環境はREQ-109の破棄運用により露出期間を最小化することを主な防御手段とし、WAF設置は必須としない。prod環境の方針は構築時に別途要件化する。
+- ルートA・ルートBのAPIエンドポイントには、API Gatewayのスロットリング(レート制限: 10 req/sec、バースト制限: 20)を設定する(NFR-005。ブルートフォース・大量リクエスト対策。検証環境の通常利用ではこれを超えるリクエストは想定しない)。
+- KMSキーのローテーションは漏洩が疑われる場合・確認された場合にのみ実施し、定期ローテーションは行わない(NFR-006)。実施時に備え、公開鍵の再配布手順を運用ドキュメントとして整備することを推奨する。
+- メンバー離脱時・AccessKey漏洩疑い時は、速やかに事前登録リストから該当AccessKeyを削除する(NFR-007)。ただしこれは新規JWT発行を防ぐのみであり、削除前に発行済みのJWTは最長30日間有効なまま残る(REQ-105)。即時に無効化する手段が必要な場合は、KMSキーローテーション(NFR-006)も合わせて検討する。
+- JWT有効期限はdev環境・stg環境ともに30日とする(stg環境は投入データがテスト用ダミーデータのみであるため許容する)。prod環境の有効期限短縮・リフレッシュトークン要否は、prod環境構築時に別途決定する(REQ-105準拠)。
 
 ## 7. 未決定事項・今後の検討課題(申し送り事項)
 
-- リフレッシュトークン方式の導入要否(本番相当移行時に再検討)。
-- AccessKeyをメンバー個別発行にするか、共通1つにするかの最終決定。
-- WAF方式(IP制限 / Basic認証)の選定(社内メンバーのアクセス経路が固定IP/VPN経由かどうかに依存)。
+- リフレッシュトークン方式の導入要否(本番相当移行時に再検討。現時点では未採用)。
+- WAF方式(IP制限 / Basic認証)の選定(社内メンバーのアクセス経路が固定IP/VPN経由かどうかに依存。stg環境での必須併用は決定済み、方式は未定)。
 - 本番環境における具体的なJWT有効期限値の最終決定。
+- prod環境のCDKスタック構築時期・詳細要件(現時点ではdev環境・stg環境のみ構築する)。
+- KMSキーローテーション手順の詳細化(NFR-006。実施タイミングは漏洩時のみと決定済み)。
