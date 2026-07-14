@@ -5,6 +5,8 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { EnvironmentConfig } from './config';
 
 export interface FasseInfraStackProps extends cdk.StackProps {
@@ -15,7 +17,7 @@ export class FasseInfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FasseInfraStackProps) {
     super(scope, id, props);
 
-    const { resourcePrefix, envName } = props.config;
+    const { resourcePrefix, envName, region } = props.config;
     const removalPolicy =
       envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
@@ -101,20 +103,122 @@ export class FasseInfraStack extends cdk.Stack {
     });
 
     // --- Lambda + API Gateway ---
-    // 認証なし（第一弾は疎通確認優先）
+    // 第二弾よりJWT認証を導入する(docs/spec/authentication参照)。ルートA/ルートBのAPIエンドポイントには
+    // NFR-005準拠のスロットリングを設定する(検証環境の通常利用を上回らない一般的な値)。
+    const authThrottle = { throttlingRateLimit: 10, throttlingBurstLimit: 20 };
     const api = new apigateway.RestApi(this, 'Api', {
       restApiName: `${resourcePrefix}-api`,
-      deployOptions: { stageName: envName },
+      deployOptions: {
+        stageName: envName,
+        methodOptions: {
+          '/auth/token/POST': authThrottle,
+          '/auth/token/cognito/POST': authThrottle,
+        },
+      },
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
       },
     });
+
+    // stg環境ではWAFを必須で併用する(NFR-004)。IP制限/Basic認証の具体的な方式は未定のため、
+    // 当面はAWSマネージドルールのみを適用する(方式決定後に追加検討)。
+    // dev環境は動作確認後にcdk destroyで速やかに破棄する運用のため対象外とする(REQ-109)。
+    if (envName === 'stg') {
+      const webAcl = new wafv2.CfnWebACL(this, 'ApiWebAcl', {
+        scope: 'REGIONAL',
+        defaultAction: { allow: {} },
+        visibilityConfig: {
+          cloudWatchMetricsEnabled: true,
+          metricName: `${resourcePrefix}-waf`,
+          sampledRequestsEnabled: true,
+        },
+        rules: [
+          {
+            name: 'AWS-AWSManagedRulesCommonRuleSet',
+            priority: 0,
+            overrideAction: { none: {} },
+            statement: {
+              managedRuleGroupStatement: {
+                vendorName: 'AWS',
+                name: 'AWSManagedRulesCommonRuleSet',
+              },
+            },
+            visibilityConfig: {
+              cloudWatchMetricsEnabled: true,
+              metricName: `${resourcePrefix}-waf-common`,
+              sampledRequestsEnabled: true,
+            },
+          },
+        ],
+      });
+      new wafv2.CfnWebACLAssociation(this, 'ApiWebAclAssociation', {
+        resourceArn: `arn:aws:apigateway:${this.region}::/restapis/${api.restApiId}/stages/${api.deploymentStage.stageName}`,
+        webAclArn: webAcl.attrArn,
+      });
+    }
 
     const commonFunctionProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
       runtime: lambda.Runtime.NODEJS_20_X,
       bundling: { minify: true },
     };
+
+    // KMS公開鍵(PEM)・AccessKeyハッシュマップ・Cognito設定は、鍵作成やUser Pool作成等の手動セットアップ手順
+    // (docs/spec/authentication task.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
+    // 未設定の間はWebAPI受口・ルートA/ルートBが401を返す(フェイルクローズ)。
+    const jwtPublicKeyPem = (this.node.tryGetContext('jwtPublicKeyPem') as string | undefined) ?? '';
+    const jwtIssuer = `${resourcePrefix}-auth`;
+
+    // KMS非対称鍵はdev環境・stg環境で共用する単一のキーとする(REQ-108)。ここでは各環境のスタックが
+    // 自環境用のキーリソースを作成する形にしており、実運用では同一ARNを両環境のLambdaに設定する
+    // (TASK-001参照。鍵ARN自体をcontextで共有する運用に切り替えてもよい)。
+    const jwtSigningKey = new kms.Key(this, 'JwtSigningKey', {
+      keySpec: kms.KeySpec.RSA_2048,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+      removalPolicy,
+    });
+
+    const authFunctionProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
+      ...commonFunctionProps,
+      environment: {
+        KMS_KEY_ID: jwtSigningKey.keyId,
+        JWT_ISSUER: jwtIssuer,
+      },
+    };
+
+    // ルートA(AccessKey): メンバーごとに個別発行したAccessKeyのSHA-256ハッシュ->メンバー識別子のマップ
+    // (docs/spec/authentication REQ-102/TASK-005)。dev環境・stg環境で同一の値を設定する(REQ-108)。
+    const accessKeyTokenFunction = new lambdaNodejs.NodejsFunction(this, 'AccessKeyTokenFunction', {
+      ...authFunctionProps,
+      entry: path.join(__dirname, 'lambda', 'auth', 'accessKeyToken.ts'),
+      environment: {
+        ...authFunctionProps.environment,
+        ACCESS_KEY_HASH_MAP_JSON: (this.node.tryGetContext('accessKeyHashMapJson') as string | undefined) ?? '{}',
+      },
+    });
+    jwtSigningKey.grant(accessKeyTokenFunction, 'kms:Sign');
+
+    // ルートB(Cognito ID Token): dev環境もstg環境のCognito User Poolを共用する(REQ-107)。
+    // User Pool未構築の間は空文字となり、JWKS取得に失敗して401を返す(フェイルクローズ)。
+    const cognitoTokenFunction = new lambdaNodejs.NodejsFunction(this, 'CognitoTokenFunction', {
+      ...authFunctionProps,
+      entry: path.join(__dirname, 'lambda', 'auth', 'cognitoToken.ts'),
+      environment: {
+        ...authFunctionProps.environment,
+        COGNITO_USER_POOL_ID: (this.node.tryGetContext('cognitoUserPoolId') as string | undefined) ?? '',
+        COGNITO_REGION: (this.node.tryGetContext('cognitoRegion') as string | undefined) ?? region,
+        COGNITO_CLIENT_ID: (this.node.tryGetContext('cognitoClientId') as string | undefined) ?? '',
+      },
+    });
+    jwtSigningKey.grant(cognitoTokenFunction, 'kms:Sign');
+
+    // ルートA・ルートBはstg環境に常設し、dev環境も同一構成をミラーする(REQ-107)
+    const authResource = api.root.addResource('auth');
+    const tokenResource = authResource.addResource('token');
+    tokenResource.addMethod('POST', new apigateway.LambdaIntegration(accessKeyTokenFunction));
+    const cognitoTokenResource = tokenResource.addResource('cognito');
+    cognitoTokenResource.addMethod('POST', new apigateway.LambdaIntegration(cognitoTokenFunction));
 
     function addCrudResource(
       resourceName: string,
@@ -135,6 +239,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'items.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         ITEM_TABLE: itemTable.tableName,
         COUNTERS_TABLE: countersTable.tableName,
       },
@@ -147,6 +252,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'suppliers.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         SUPPLIER_TABLE: supplierTable.tableName,
         COUNTERS_TABLE: countersTable.tableName,
       },
@@ -159,6 +265,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'menus.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         MENU_TABLE: menuTable.tableName,
         COUNTERS_TABLE: countersTable.tableName,
       },
@@ -173,6 +280,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'taxRates.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         TAX_RATE_TABLE: taxRateTable.tableName,
       },
     });
@@ -192,6 +300,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'purchases.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         PURCHASE_HEADER_TABLE: purchaseHeaderTable.tableName,
         PURCHASE_DETAIL_TABLE: purchaseDetailTable.tableName,
         COUNTERS_TABLE: countersTable.tableName,
@@ -207,6 +316,7 @@ export class FasseInfraStack extends cdk.Stack {
       ...commonFunctionProps,
       entry: path.join(__dirname, 'lambda', 'sales.ts'),
       environment: {
+        JWT_PUBLIC_KEY_PEM: jwtPublicKeyPem,
         SALES_HEADER_TABLE: salesHeaderTable.tableName,
         SALES_DETAIL_TABLE: salesDetailTable.tableName,
         COUNTERS_TABLE: countersTable.tableName,

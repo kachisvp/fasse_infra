@@ -1,14 +1,15 @@
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from './common/dynamodb';
 import { json, notFound } from './common/response';
+import { withJwtAuth } from './common/auth';
 
 const TAX_RATE_TABLE = process.env.TAX_RATE_TABLE!;
 
 // m_tax_rate は tax_category + valid_from の複合キーで期間管理する。
 // t_purchase_detail/t_sales_detail は tax_rate を数値でスナップショット保持しFK参照しないため、
 // 他マスタと異なり論理削除(is_active)ではなく物理削除でよい（詳細はdesign.md「消費税の扱い」参照）
-export const handler: APIGatewayProxyHandler = async (event) => {
+const taxRatesHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const taxCategory = event.pathParameters?.taxCategory;
   const validFrom = event.pathParameters?.validFrom;
   const now = new Date().toISOString();
@@ -84,3 +85,5 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return json(405, { message: 'Method Not Allowed' });
   }
 };
+
+export const handler = withJwtAuth(taxRatesHandler);

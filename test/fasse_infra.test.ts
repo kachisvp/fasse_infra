@@ -53,11 +53,40 @@ describe('FasseInfraStack', () => {
     });
   });
 
-  test('Lambda関数が6個（items/suppliers/menus/tax-rates/purchases/sales）作成される', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 6);
+  test('Lambda関数が8個（items/suppliers/menus/tax-rates/purchases/sales/認証ルートA/ルートB）作成される', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 8);
   });
 
   test('APIGatewayのRestApiが1個作成される', () => {
     template.resourceCountIs('AWS::ApiGateway::RestApi', 1);
+  });
+
+  test('JWT署名用のKMS非対称鍵が1個作成される', () => {
+    template.hasResourceProperties('AWS::KMS::Key', {
+      KeySpec: 'RSA_2048',
+      KeyUsage: 'SIGN_VERIFY',
+    });
+  });
+
+  test('stg環境ではWAF(WebACL)が作成され、APIGatewayステージに関連付けられる（NFR-004）', () => {
+    template.resourceCountIs('AWS::WAFv2::WebACL', 1);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
+  });
+});
+
+describe('FasseInfraStack (dev環境)', () => {
+  test('dev環境はcdk destroyでの破棄運用のためWAFを作成しない（REQ-109）', () => {
+    const app = new cdk.App();
+    const stack = new FasseInfraStack(app, 'TestDevStack', {
+      env: { region: 'ap-northeast-1' },
+      config: {
+        envName: 'dev',
+        region: 'ap-northeast-1',
+        resourcePrefix: 'fasse-dev-test',
+      },
+    });
+    const template = Template.fromStack(stack);
+    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
   });
 });
