@@ -72,10 +72,28 @@ describe('FasseInfraStack', () => {
     template.resourceCountIs('AWS::WAFv2::WebACL', 1);
     template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 1);
   });
+
+  test('stg環境ではCognito User Poolが1個、セルフサインアップ無効で作成される（REQ-110）', () => {
+    template.resourceCountIs('AWS::Cognito::UserPool', 1);
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: true },
+    });
+  });
+
+  test('Cognito App Clientがシークレットなし・Authorization Code Grant + PKCEで作成される（REQ-110）', () => {
+    template.resourceCountIs('AWS::Cognito::UserPoolClient', 1);
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      GenerateSecret: false,
+      AllowedOAuthFlows: ['code'],
+      AllowedOAuthScopes: ['openid', 'email'],
+    });
+  });
 });
 
 describe('FasseInfraStack (dev環境)', () => {
-  test('dev環境はcdk destroyでの破棄運用のためWAFを作成しない（REQ-109）', () => {
+  let devTemplate: Template;
+
+  beforeAll(() => {
     const app = new cdk.App();
     const stack = new FasseInfraStack(app, 'TestDevStack', {
       env: { region: 'ap-northeast-1' },
@@ -85,8 +103,16 @@ describe('FasseInfraStack (dev環境)', () => {
         resourcePrefix: 'fasse-dev-test',
       },
     });
-    const template = Template.fromStack(stack);
-    template.resourceCountIs('AWS::WAFv2::WebACL', 0);
-    template.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
+    devTemplate = Template.fromStack(stack);
+  });
+
+  test('dev環境はcdk destroyでの破棄運用のためWAFを作成しない（REQ-109）', () => {
+    devTemplate.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    devTemplate.resourceCountIs('AWS::WAFv2::WebACLAssociation', 0);
+  });
+
+  test('dev環境は専用のCognito User Poolを作成しない（stg環境の値をcontext経由で共用する。REQ-107・REQ-110）', () => {
+    devTemplate.resourceCountIs('AWS::Cognito::UserPool', 0);
+    devTemplate.resourceCountIs('AWS::Cognito::UserPoolClient', 0);
   });
 });

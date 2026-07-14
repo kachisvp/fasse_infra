@@ -52,6 +52,7 @@
 - REQ-107: ルートA(AccessKey)・ルートB(Cognito ID Token)のAPIエンドポイントおよび対応するLambda関数は、stg環境のCDKスタックに常設すること。ローカル実行のフロントエンド(`ENV=local`)・AWSホスト済みフロントエンド(`ENV=stg`)は、いずれもstg環境のバックエンドに接続する(dev環境のバックエンドには接続しない)。dev環境のCDKスタックは、stg環境への変更反映前にバックエンドを一時的に検証するためのサンドボックスとして、stg環境と同一構成(ルートA・ルートB双方)をミラーする。dev環境のルートBは専用のCognito User Poolを持たず、stg環境のCognito User Poolを共用してID Tokenを検証する。
 - REQ-108: JWT署名用のKMS非対称鍵は、dev環境・stg環境で単一のキーを共用すること(環境ごとに分離しない)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであり、両環境で発行されるJWTに互換性を持たせるため、鍵を分離する必要はない。
 - REQ-109: dev環境は、stg環境への変更反映前の動作確認が完了し次第、速やかに`cdk destroy`で破棄すること。常時稼働させないことで、dev環境のルートA/ルートBの露出期間を必要最小限に抑える(NFR-004参照)。
+- REQ-110: Cognito User Pool・App Client・Hosted UIドメインは、stg環境のCDKスタックにのみ作成すること。dev環境は専用のUser Poolを作成せず、stg環境のUser Pool ID/Client IDをCDK context経由で共用する(REQ-107準拠)。セルフサインアップは無効とし、`demo1`, `demo2`のように事前登録した複数のデモユーザーのみがログインできる方式とする(社外の第三者が任意にアカウントを作成できないようにするため)。App Clientはpublicクライアント(シークレットなし)とし、Authorization Code Grant + PKCEを用いる。
 
 ### 4.2 WebAPI受口(Spring Boot / Lambda Mock 共通)
 

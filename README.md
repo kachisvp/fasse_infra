@@ -15,6 +15,9 @@ npm test
 npm run build
 aws logs tail /aws/lambda/<関数名> --follow
 aws dynamodb scan --table-name fasse-stg-m-item
+
+# create AccessKey
+echo -n "$(openssl rand -base64 32)" | shasum -a 256 | awk '{print $1}'
 ```
 
 </details>

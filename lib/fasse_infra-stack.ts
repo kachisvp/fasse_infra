@@ -7,6 +7,7 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { EnvironmentConfig } from './config';
 
 export interface FasseInfraStackProps extends cdk.StackProps {
@@ -178,6 +179,8 @@ export class FasseInfraStack extends cdk.Stack {
       keyUsage: kms.KeyUsage.SIGN_VERIFY,
       removalPolicy,
     });
+    // 初回デプロイ後、この値を使って公開鍵PEMをエクスポートする(TASK-003)
+    new cdk.CfnOutput(this, 'JwtSigningKeyId', { value: jwtSigningKey.keyId });
 
     const authFunctionProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
       ...commonFunctionProps,
@@ -199,6 +202,56 @@ export class FasseInfraStack extends cdk.Stack {
     });
     jwtSigningKey.grant(accessKeyTokenFunction, 'kms:Sign');
 
+    // Cognito User Pool・App Client・Hosted UIドメインはstg環境のスタックにのみ作成する。
+    // dev環境は専用のPoolを作らず、stg環境の値をCDK context経由で共用する(REQ-107・REQ-110)。
+    let cognitoUserPoolId = (this.node.tryGetContext('cognitoUserPoolId') as string | undefined) ?? '';
+    let cognitoClientId = (this.node.tryGetContext('cognitoClientId') as string | undefined) ?? '';
+    const cognitoRegion = (this.node.tryGetContext('cognitoRegion') as string | undefined) ?? region;
+
+    if (envName === 'stg') {
+      // セルフサインアップは無効。demo1/demo2のように事前登録したデモユーザーのみがログインできる
+      // (社外の第三者が任意にアカウントを作成できないようにするため。REQ-110)
+      const userPool = new cognito.UserPool(this, 'UserPool', {
+        userPoolName: `${resourcePrefix}-user-pool`,
+        selfSignUpEnabled: false,
+        signInAliases: { email: true },
+        removalPolicy,
+      });
+
+      // Hosted UIドメインはグローバルに一意である必要があるため、衝突した場合はcontextで変更する
+      const cognitoDomainPrefix =
+        (this.node.tryGetContext('cognitoDomainPrefix') as string | undefined) ?? `${resourcePrefix}-auth`;
+      userPool.addDomain('UserPoolDomain', {
+        cognitoDomain: { domainPrefix: cognitoDomainPrefix },
+      });
+
+      // fasse_front側がAuthorization Code Grant + PKCEで実装しているため、これに合わせる(REQ-110)。
+      // コールバックURL/ログアウトURLはauth_callback.htmlに対応するURLをcontextで指定する
+      const cognitoCallbackUrlsContext = this.node.tryGetContext('cognitoCallbackUrls') as string | undefined;
+      const cognitoCallbackUrls = cognitoCallbackUrlsContext
+        ? cognitoCallbackUrlsContext.split(',')
+        : ['http://localhost:5000/auth_callback.html'];
+
+      const userPoolClient = userPool.addClient('UserPoolClient', {
+        generateSecret: false,
+        oAuth: {
+          flows: { authorizationCodeGrant: true },
+          scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
+          callbackUrls: cognitoCallbackUrls,
+          logoutUrls: cognitoCallbackUrls,
+        },
+      });
+
+      cognitoUserPoolId = userPool.userPoolId;
+      cognitoClientId = userPoolClient.userPoolClientId;
+
+      new cdk.CfnOutput(this, 'CognitoUserPoolId', { value: userPool.userPoolId });
+      new cdk.CfnOutput(this, 'CognitoUserPoolClientId', { value: userPoolClient.userPoolClientId });
+      new cdk.CfnOutput(this, 'CognitoHostedUiDomain', {
+        value: `https://${cognitoDomainPrefix}.auth.${region}.amazoncognito.com`,
+      });
+    }
+
     // ルートB(Cognito ID Token): dev環境もstg環境のCognito User Poolを共用する(REQ-107)。
     // User Pool未構築の間は空文字となり、JWKS取得に失敗して401を返す(フェイルクローズ)。
     const cognitoTokenFunction = new lambdaNodejs.NodejsFunction(this, 'CognitoTokenFunction', {
@@ -206,9 +259,9 @@ export class FasseInfraStack extends cdk.Stack {
       entry: path.join(__dirname, 'lambda', 'auth', 'cognitoToken.ts'),
       environment: {
         ...authFunctionProps.environment,
-        COGNITO_USER_POOL_ID: (this.node.tryGetContext('cognitoUserPoolId') as string | undefined) ?? '',
-        COGNITO_REGION: (this.node.tryGetContext('cognitoRegion') as string | undefined) ?? region,
-        COGNITO_CLIENT_ID: (this.node.tryGetContext('cognitoClientId') as string | undefined) ?? '',
+        COGNITO_USER_POOL_ID: cognitoUserPoolId,
+        COGNITO_REGION: cognitoRegion,
+        COGNITO_CLIENT_ID: cognitoClientId,
       },
     });
     jwtSigningKey.grant(cognitoTokenFunction, 'kms:Sign');
