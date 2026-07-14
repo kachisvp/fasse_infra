@@ -23,6 +23,16 @@ design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし�
 - [x] APIレベルでの疎通確認（stg環境、items/suppliers/purchasesのCRUD・TransactWriteItems・日付範囲一覧を確認済み）
 - [ ] Flutterアプリからの疎通確認（別途Flutterプロジェクト側の対応が必要）
 
+## 第二弾（JWT認証導入）
+
+詳細タスクは`docs/spec/authentication/task.md`を参照。本タスクリストでは、purchase-sales側の実装(既存Lambda・既存スタック)に対する影響のみを記す。
+
+- [ ] `config.ts`の`EnvName`型に`dev`を追加し、`bin/fasse_infra.ts`をデプロイ対象環境の選択に対応させる
+- [ ] 既存の6つのLambda(items/suppliers/menus/tax-rates/purchases/sales)に、共通のJWT検証処理(`lib/lambda/common/`配下に追加)を組み込む
+- [ ] JWT発行基盤(ルートA/ルートB、KMSキー)を既存の`lib/fasse_infra-stack.ts`に追加する(スタック分割はしない方針を踏襲)
+- [ ] API GatewayのCORS設定(`defaultCorsPreflightOptions`)に`Authorization`ヘッダーを含む`allowHeaders`を明示する
+- [ ] stg環境へのWAF追加、API Gatewayのスロットリング設定を行う(NFR-004/NFR-005準拠)
+
 ## 将来（Aurora MySQL Serverlessへの移行）
 
 - [x] データモデルのFK/型不整合の解消（design.md「将来形」DDLで対応済み）

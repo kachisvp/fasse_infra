@@ -12,11 +12,13 @@
 - [ ] TASK-006 (Mid): dev環境の動作確認完了後に`cdk destroy`で速やかに破棄する運用手順をドキュメント化する(REQ-109準拠)
 - [ ] TASK-007 (Mid): KMSキーローテーション(漏洩時のみ実施。定期ローテーションは行わない)時の公開鍵再配布手順(WebAPI受口への反映方法を含む)を運用ドキュメントとして整備する(NFR-006準拠)
 - [ ] TASK-008 (Mid): メンバー離脱・AccessKey漏洩疑い時に、事前登録リストから該当AccessKeyを削除する運用手順をドキュメント化する(発行済みJWTは削除後も最長30日間有効なままである旨を明記する。NFR-007準拠)
+- [ ] TASK-009 (High): `lib/config.ts`の`EnvName`型に`dev`を追加し、dev環境用のパラメータ(アカウントID/リージョン/リソース名等)を定義する
+- [ ] TASK-010 (High): `bin/fasse_infra.ts`を、CDK context等でデプロイ対象環境(dev/stg)を選択できるように改修する(現状は`stg`固定)
 
 ## Phase 1: JWT発行基盤(API Gateway + Lambda)
 
 - [ ] TASK-101 (High): API Gatewayに `POST /auth/token` (ルートA: AccessKey)エンドポイントを作成する(stg環境に常設。REQ-107準拠)
-- [ ] TASK-101b (High): ルートA・ルートBに対応するCDK Constructを共通化し、dev環境用スタック・stg環境用スタックの双方に同一構成でデプロイされることを確認する(REQ-107準拠)
+- [ ] TASK-101b (High): ルートA・ルートBに対応するCDK Constructを共通化し、既存の`lib/fasse_infra-stack.ts`に追加する(スタック分割はしない方針を踏襲)。dev環境用スタック・stg環境用スタックの双方に同一構成でデプロイされることを確認する(REQ-107準拠)
 - [ ] TASK-102 (High): Lambda(ルートA)を実装する: AccessKey照合ロジック
 - [ ] TASK-103 (High): Lambda共通処理: JWTヘッダー・ペイロード組み立て + KMS `Sign` 呼び出しによる署名処理を実装する
 - [ ] TASK-104 (High): 発行するJWTのクレーム設計(`iss`, `sub`, `iat`, `exp` 等)を確定する
@@ -27,6 +29,8 @@
 - [ ] TASK-108 (Mid): ルートB検証OK後、Cognitoトークンの`sub`/`email`を自前JWTの`sub`に引き継ぐ処理を実装する
 - [ ] TASK-109 (Mid): ルートA・ルートBの単体テスト、異常系(不正AccessKey・不正Token)のテストを作成する
 - [ ] TASK-110 (High): ルートA・ルートBのAPI GatewayにUsage Plan/スロットリング(レート制限: 10 req/sec、バースト制限: 20)を設定する(NFR-005準拠)
+- [ ] TASK-111 (High): stg環境にWAF(`wafv2.CfnWebACL`)を作成し、既存のAPI Gatewayに関連付ける(NFR-004準拠。dev環境は対象外)
+- [ ] TASK-112 (Mid): 既存API Gatewayの`defaultCorsPreflightOptions`に`allowHeaders`を明示し、`Authorization`ヘッダーがプリフライトで許可されることを確認する
 
 ## Phase 2: Cognito設定(stg環境以降)
 
@@ -38,7 +42,8 @@
 
 ## Phase 3: WebAPI受口(検証ロジック実装)
 
-- [ ] TASK-301 (High): Lambda(Mock WebAPI)にKMS公開鍵によるJWT検証ロジックを実装する
+- [ ] TASK-301 (High): 既存の6つのLambda(items/suppliers/menus/tax-rates/purchases/sales。purchase-sales第一弾で実装済み・現時点では認証なし)に組み込む、共通のJWT検証処理(KMS公開鍵によるBearer Token検証)を`lib/lambda/common/`配下に実装する
+- [ ] TASK-301b (High): TASK-301の共通検証処理を、既存6Lambdaのハンドラそれぞれに組み込む(既存実装への後付け改修)
 - [ ] TASK-302 (High): 検証NG時(署名不正・期限切れ)に401を返す処理を実装する
 - [ ] TASK-303 (Mid): Spring Boot側にKMS公開鍵(PEM)を用いたJWT検証フィルタを実装する(`spring-security-oauth2-resource-server`等)
 - [ ] TASK-304 (Mid): Spring Boot側の検証ロジックについて、dev環境・stg環境で同一コードパスとなることを確認するテストを作成する
