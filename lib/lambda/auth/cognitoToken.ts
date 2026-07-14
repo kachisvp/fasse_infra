@@ -65,9 +65,15 @@ async function verifyIdToken(idToken: string): Promise<{ sub: string; email?: st
   const jwk = (await getJwks()).find((k) => k.kid === header.kid);
   if (!jwk) return null;
 
-  const publicKey = createPublicKey({ key: jwk as unknown as Record<string, unknown>, format: 'jwk' });
   const signature = Buffer.from(signatureB64, 'base64url');
-  const isValid = cryptoVerify('RSA-SHA256', Buffer.from(`${headerB64}.${payloadB64}`), publicKey, signature);
+  let isValid: boolean;
+  try {
+    const publicKey = createPublicKey({ key: jwk as unknown as Record<string, unknown>, format: 'jwk' });
+    isValid = cryptoVerify('RSA-SHA256', Buffer.from(`${headerB64}.${payloadB64}`), publicKey, signature);
+  } catch {
+    // JWKSの内容が不正な場合もクラッシュ(500系)ではなく検証NG(401)として扱う
+    return null;
+  }
   if (!isValid) return null;
 
   if (payload.iss !== COGNITO_ISSUER) return null;

@@ -168,7 +168,12 @@ export class FasseInfraStack extends cdk.Stack {
     // KMS公開鍵(PEM)・AccessKeyハッシュマップ・Cognito設定は、鍵作成やUser Pool作成等の手動セットアップ手順
     // (docs/spec/authentication task.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
     // 未設定の間はWebAPI受口・ルートA/ルートBが401を返す(フェイルクローズ)。
-    const jwtPublicKeyPem = (this.node.tryGetContext('jwtPublicKeyPem') as string | undefined) ?? '';
+    // PEMは改行を含むため、CDKのcontext引数(-c)にそのまま渡すと改行以降が失われる問題があった。
+    // base64エンコードした状態で渡し、ここでデコードすることで回避する。
+    const jwtPublicKeyPemBase64 = (this.node.tryGetContext('jwtPublicKeyPemBase64') as string | undefined) ?? '';
+    const jwtPublicKeyPem = jwtPublicKeyPemBase64
+      ? Buffer.from(jwtPublicKeyPemBase64, 'base64').toString('utf8')
+      : '';
     const jwtIssuer = `${resourcePrefix}-auth`;
 
     // KMS非対称鍵はdev環境・stg環境で共用する単一のキーとする(REQ-108)。ここでは各環境のスタックが
@@ -214,7 +219,16 @@ export class FasseInfraStack extends cdk.Stack {
       const userPool = new cognito.UserPool(this, 'UserPool', {
         userPoolName: `${resourcePrefix}-user-pool`,
         selfSignUpEnabled: false,
-        signInAliases: { email: true },
+        // demo1/demo2のように、メールアドレス形式に限らない任意のユーザー名を許可する(emailはエイリアスとして残す)
+        signInAliases: { username: true, email: true },
+        // 投入データがテスト用ダミーデータのみであることに合わせて緩和する(design.md「Cognito User Poolの構築」参照)
+        passwordPolicy: {
+          minLength: 6,
+          requireLowercase: false,
+          requireUppercase: false,
+          requireDigits: false,
+          requireSymbols: false,
+        },
         removalPolicy,
       });
 

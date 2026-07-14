@@ -1,14 +1,21 @@
 {
   "info": {
-    "name": "Fasse 仕入・売上管理API (第一弾 stg)",
-    "description": "docs/spec/purchase-sales/openapi.yaml に対応するPostmanコレクション。POSTリクエストのTestsタブで作成されたidをコレクション変数に自動設定し、後続のGET/PUT/DELETEで {{itemId}} 等として使い回せます。",
+    "name": "Fasse 仕入・売上管理API (第二弾 stg, JWT認証)",
+    "description": "docs/spec/purchase-sales/openapi.yaml + docs/spec/authentication に対応するPostmanコレクション。「Auth」フォルダの「Get JWT via AccessKey (ルートA)」を実行するとコレクション変数 {{jwt}} が自動設定され、以降の全リクエストは Authorization: Bearer {{jwt}} を継承します(コレクション全体のauth設定による)。POSTリクエストのTestsタブで作成されたidをコレクション変数に自動設定し、後続のGET/PUT/DELETEで {{itemId}} 等として使い回せます。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{jwt}}", "type": "string" }]
   },
   "variable": [
     { "key": "apiId", "value": "" },
     { "key": "region", "value": "ap-northeast-1" },
     { "key": "stage", "value": "stg" },
     { "key": "baseUrl", "value": "https://{{apiId}}.execute-api.{{region}}.amazonaws.com/{{stage}}" },
+    { "key": "accessKey", "value": "" },
+    { "key": "idToken", "value": "" },
+    { "key": "jwt", "value": "" },
     { "key": "itemId", "value": "" },
     { "key": "supplierId", "value": "" },
     { "key": "menuId", "value": "" },
@@ -18,6 +25,67 @@
     { "key": "salesId", "value": "" }
   ],
   "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Get JWT via AccessKey (ルートA)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('jwt', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/token", "host": ["{{baseUrl}}"], "path": ["auth", "token"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessKey\": \"{{accessKey}}\"\n}"
+            },
+            "description": "事前に環境変数 {{accessKey}} に、事前登録済みのAccessKeyを設定しておく(docs/spec/authentication REQ-102)。"
+          }
+        },
+        {
+          "name": "Get JWT via Cognito ID Token (ルートB)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('jwt', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/auth/token/cognito",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "token", "cognito"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idToken\": \"{{idToken}}\"\n}"
+            },
+            "description": "idTokenはCognito Hosted UIでログインして別途取得する必要があり、Postmanだけでは自動取得できない(PKCEフローのため)。取得済みのID Tokenを環境変数 {{idToken}} に設定してから実行する。"
+          }
+        }
+      ]
+    },
     {
       "name": "Items",
       "item": [

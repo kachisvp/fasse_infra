@@ -31,8 +31,14 @@ export function verifyJwt(token: string, publicKeyPem: string): JwtClaims | null
 
   const signature = Buffer.from(signatureB64, 'base64url');
   const signedData = `${headerB64}.${payloadB64}`;
-  const publicKey = createPublicKey(publicKeyPem);
-  const isValid = cryptoVerify('RSA-SHA256', Buffer.from(signedData), publicKey, signature);
+  let isValid: boolean;
+  try {
+    const publicKey = createPublicKey(publicKeyPem);
+    isValid = cryptoVerify('RSA-SHA256', Buffer.from(signedData), publicKey, signature);
+  } catch {
+    // 公開鍵PEMが不正な場合もクラッシュ(500系)ではなく検証NG(401)として扱う
+    return null;
+  }
   if (!isValid) return null;
 
   if (typeof payload.exp !== 'number' || Date.now() >= payload.exp * 1000) {

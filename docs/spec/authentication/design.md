@@ -99,8 +99,9 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 
 - User Pool・App Client・Hosted UIドメインは、既存の`lib/fasse_infra-stack.ts`にCDK(`aws-cognito`)で作成する(スタック分割はしない方針を踏襲)。
 - 作成するのはstg環境のスタックのみとする。dev環境のスタックは専用のUser Poolを作成せず、stg環境のUser Pool ID/Client IDをCDK contextで受け取って参照する(REQ-107・REQ-110準拠。dev環境は`KMS_KEY_ID`のようにスタック内で自動解決できないため、手動でcontextに設定する)。
-- サインイン方式: email。**セルフサインアップは無効**とする(REQ-110)。`demo1`, `demo2`のように、事前に複数のデモユーザーを運用担当者が`aws cognito-idp admin-create-user`等で作成しておく方式とする(TASK-203)。セルフサインアップを無効にすることで、社外の第三者がHosted UIのURLを知っていても任意にアカウントを作成できない(WAFの方式(IP制限/Basic認証)が未定な現状でも、この経路からの不正アクセスは発生しない)。
+- サインイン方式: ユーザー名(`demo1`, `demo2`のような任意の文字列) + emailエイリアス。ユーザー名をメールアドレス形式に限定しない(`signInAliases: { username: true, email: true }`)。**セルフサインアップは無効**とする(REQ-110)。事前に複数のデモユーザーを運用担当者が`aws cognito-idp admin-create-user`等で作成しておく方式とする(TASK-203)。セルフサインアップを無効にすることで、社外の第三者がHosted UIのURLを知っていても任意にアカウントを作成できない(WAFの方式(IP制限/Basic認証)が未定な現状でも、この経路からの不正アクセスは発生しない)。
 - App Client: publicクライアント(シークレットなし)とし、Authorization Code Grant + PKCEを用いる(スコープ: `openid`, `email`。REQ-110)。fasse_front側がPKCEで実装しているため、これに合わせる。
+- パスワードポリシーは、投入データがテスト用ダミーデータのみであること(REQ-105と同様の前提)に合わせて緩和する(最小文字数のみ要求し、大文字・数字・記号の必須化は行わない)。デモユーザー(`demo1`等)の運用を簡易にするための決定であり、prod環境構築時は別途強度を見直す。
 - コールバックURL・ログアウトURLは、フロントエンドの`auth_callback.html`に対応するURLをCDK contextで指定する(ローカル開発時はFlutterを固定ポートで起動することを前提とする。例: `flutter run -d chrome --web-port=5000`)。
 - Hosted UIドメインのプレフィックスは`<resourcePrefix>-auth`を既定値とする。Cognitoのドメインはグローバルに一意である必要があるため、衝突した場合はCDK contextで変更する。
 

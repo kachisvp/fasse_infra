@@ -34,7 +34,7 @@
 
 ## Phase 2: Cognito設定(stg環境以降)
 
-- [ ] TASK-201 (High): stg環境用 Cognito User Poolを、既存の`lib/fasse_infra-stack.ts`にCDKで作成する(セルフサインアップ無効、サインイン方式email。dev環境は専用Poolを作らずcontext経由でstgの値を共用する。REQ-107・REQ-110)
+- [ ] TASK-201 (High): stg環境用 Cognito User Poolを、既存の`lib/fasse_infra-stack.ts`にCDKで作成する(セルフサインアップ無効、サインイン方式はユーザー名(`demo1`等、メール形式に限らない)+emailエイリアス。パスワードポリシーはテスト用ダミーデータのみである前提で緩和する(最小6文字、複雑性要件なし)。dev環境は専用Poolを作らずcontext経由でstgの値を共用する。REQ-107・REQ-110)
 - [ ] TASK-202 (High): Cognito Hosted UIドメイン(User Pool Domain)と、publicクライアント(シークレットなし、Authorization Code Grant + PKCE、スコープ`openid`/`email`)のApp ClientをCDKで作成する(REQ-110)
 - [ ] TASK-203 (High): `demo1`, `demo2`のように、事前に複数のデモユーザーを`aws cognito-idp admin-create-user`等で作成する(セルフサインアップ無効のため、社外の第三者は自分でアカウントを作成できない。REQ-110)
 - [ ] TASK-204 (Mid): fasse_frontの`auth_callback.html`に対応するコールバックURL・ログアウトURLをCDK contextで指定する(ローカル開発はFlutterを固定ポートで起動する運用とする)

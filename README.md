@@ -151,4 +151,52 @@ cdk --version
 - [TypeScriptのインストールから実行まで](https://qiita.com/eiji-noguchi/items/8c1d3741ac9f2857b230)
 - [TypeScriptを始めよう ~ すぐにできる実行環境構築 ~](https://qiita.com/Yuki-Kurita/items/5e449e2c05aaeeef80ac)
 
+## Deploy
+
+Cognito, KMSに関連してdeployに手順が必要だったため記録する
+
+```
+# 事前準備: AccessKeyを決める(AWS操作は不要)
+## デモユーザーごとにAccessKeyを生成
+openssl rand -base64 32
+## 生成したAccessKeyのSHA-256ハッシュを計算
+echo -n "_accessKey_" | shasum -a 256 | awk '{print $1}'
+
+# 1回目のデプロイ(KMSキー・Cognito User Pool等の箱を作る)
+npx cdk deploy FasseInfraStack-stg --require-approval never \
+  -c accessKeyHashMapJson='{"newhash123...":"demo1","1db15a85...":"demo2","ee6dc7d8...":"demo3"}' \
+  -c cognitoCallbackUrls="http://localhost:5000/auth_callback.html"
+
+## デプロイ完了後、出力(Outputs)に以下が表示されます。
+- JwtSigningKeyId: KMSキーID
+- CognitoUserPoolId / CognitoUserPoolClientId / CognitoHostedUiDomain
+
+> この時点ではJWT_PUBLIC_KEY_PEMが未設定なので、items等のAPIは全て401を返します(想定通りです)。
+
+# KMS公開鍵をPEM形式でエクスポートする(TASK-003)
+aws kms get-public-key --key-id <JwtSigningKeyIdの値> --query PublicKey --output text \
+  | base64 -d | openssl rsa -pubin -inform DER -outform PEM -out jwt_public_key.pem
+
+# 2回目のデプロイ(公開鍵を設定し、検証を有効化する)
+npx cdk deploy FasseInfraStack-stg --require-approval never \
+  -c accessKeyHashMapJson='{"newhash123...":"demo1","1db15a85...":"demo2","ee6dc7d8...":"demo3"}' \
+  -c cognitoCallbackUrls="http://localhost:5000/auth_callback.html" \
+  -c jwtPublicKeyPemBase64="$(base64 < jwt_public_key.pem | tr -d '\n')"
+
+> これで items等のAPIも正常にJWTを検証できるようになります。
+
+# Cognitoデモユーザーの作成(TASK-203)
+aws cognito-idp admin-create-user \
+  --user-pool-id <CognitoUserPoolIdの値> \
+  --username demo1 \
+  --user-attributes Name=email,Value=demo1@example.com Name=email_verified,Value=true \
+  --temporary-password '<初期パスワード>'
+
+# fasse_front側の.env設定
+ACCESS_KEY=<demo1用に生成したAccessKeyの値>
+COGNITO_DOMAIN=<CognitoHostedUiDomainの値>
+COGNITO_CLIENT_ID=<CognitoUserPoolClientIdの値>
+
+```
+
 </details>
