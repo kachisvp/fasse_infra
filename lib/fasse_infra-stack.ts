@@ -8,10 +8,17 @@ import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { EnvironmentConfig } from './config';
 
 export interface FasseInfraStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
+  // フロントエンド配信用CloudFrontに関連付けるWAFv2 WebACL(scope: CLOUDFRONT)のARN。
+  // us-east-1の専用スタック(FasseWebAclStack)から受け渡される(stg環境のみ。docs/spec/web-hosting REQ-301)。
+  webAclArn?: string;
 }
 
 export class FasseInfraStack extends cdk.Stack {
@@ -393,5 +400,52 @@ export class FasseInfraStack extends cdk.Stack {
     salesDetailTable.grantReadWriteData(salesFunction);
     countersTable.grantReadWriteData(salesFunction);
     addCrudResource('sales', salesFunction);
+
+    // --- フロントエンド配信(S3 + CloudFront) ---
+    // 本機能はstg環境のCDKスタックにのみ構築する(docs/spec/web-hosting REQ-401)。dev環境は
+    // 動作確認後にcdk destroyで速やかに破棄する一時的なサンドボックスであり、フロントエンド配信という
+    // 永続的な公開用途とは性質が異なるため対象外とする。
+    if (envName === 'stg') {
+      const webBucket = new s3.Bucket(this, 'WebBucket', {
+        bucketName: `${resourcePrefix}-web`,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        // ビルド成果物のみを保持する再生成可能なバケットであるため、スタック削除時に手動でのオブジェクト
+        // 削除作業を不要にする(REQ-103)。
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      });
+
+      // Origin Access Control(OAC)によりS3を非公開のままCloudFrontのオリジンとする(REQ-201)。
+      const distribution = new cloudfront.Distribution(this, 'WebDistribution', {
+        defaultBehavior: {
+          origin: cloudfrontOrigins.S3BucketOrigin.withOriginAccessControl(webBucket),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
+        defaultRootObject: 'index.html',
+        // Flutter-WebのSPAルーティングで存在しないパスへ直接アクセス/リロードされた場合、S3が返す
+        // 403/404をindex.htmlの200へ読み替える(REQ-204)。
+        errorResponses: [
+          { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+          { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        ],
+        // us-east-1の専用スタック(FasseWebAclStack)から受け渡されるWebACL ARN(NFR-004準拠。REQ-301)。
+        webAclId: props.webAclArn,
+      });
+
+      // fasse_front側で事前に`flutter build web`を実行した成果物をCDKアセットとして取り込み、
+      // デプロイの都度S3へ同期・CloudFrontキャッシュを無効化する(REQ-104、REQ-206)。
+      // 成果物が存在しない場合は`cdk synth`/`cdk deploy`がアセット解決エラーとして検知する。
+      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+        sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'fasse_front', 'build', 'web'))],
+        destinationBucket: webBucket,
+        distribution,
+        distributionPaths: ['/*'],
+      });
+
+      new cdk.CfnOutput(this, 'WebDistributionDomainName', {
+        value: `https://${distribution.distributionDomainName}`,
+      });
+    }
   }
 }
