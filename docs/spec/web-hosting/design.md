@@ -85,11 +85,13 @@ new s3deploy.BucketDeployment(this, 'DeployWebsite', {
   destinationBucket: webBucket,
   distribution,
   distributionPaths: ['/*'],
+  memoryLimit: 1024,
 });
 ```
 
 - `sources` に `../fasse_front/build/web` を指定することで、`fasse_front` 側でのビルド成果物をそのままCDKアセットとして取り込む(REQ-104配下の実装)
 - `distribution`/`distributionPaths: ['/*']` を指定することで、デプロイの都度CloudFrontのキャッシュを自動的に無効化する(REQ-206)。手動での `aws cloudfront create-invalidation` 実行は不要とする
+- `memoryLimit` はCDKの既定値(128MB)のままだと、Flutter-Webビルド成果物(多数の小ファイル・数十MB規模)の同期処理中にLambdaがメモリ不足(`Runtime.OutOfMemory`)でクラッシュすることを2026-07-20のstg環境デプロイで確認した(既定Lambdaメモリ128MBに対しMax Memory Used 127MBで異常終了)。同期処理に必要なメモリを十分確保するため`1024`(MB)に明示設定する
 
 ### 3.4 WAF(us-east-1専用スタック)
 

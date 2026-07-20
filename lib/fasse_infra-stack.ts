@@ -436,11 +436,14 @@ export class FasseInfraStack extends cdk.Stack {
       // fasse_front側で事前に`flutter build web`を実行した成果物をCDKアセットとして取り込み、
       // デプロイの都度S3へ同期・CloudFrontキャッシュを無効化する(REQ-104、REQ-206)。
       // 成果物が存在しない場合は`cdk synth`/`cdk deploy`がアセット解決エラーとして検知する。
+      // memoryLimitは既定値(128MB)だと同期処理中にLambdaがOutOfMemoryでクラッシュするため1024MBに引き上げる
+      // (design.md 3.3節参照)。
       new s3deploy.BucketDeployment(this, 'DeployWebsite', {
         sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'fasse_front', 'build', 'web'))],
         destinationBucket: webBucket,
         distribution,
         distributionPaths: ['/*'],
+        memoryLimit: 1024,
       });
 
       new cdk.CfnOutput(this, 'WebDistributionDomainName', {

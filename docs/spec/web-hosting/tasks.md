@@ -26,6 +26,7 @@
 - [ ] `npx cdk synth` がエラーなく完了することを確認する(`../fasse_front/build/web` が存在しない場合はエラーになることも合わせて確認し、フェイルセーフとして機能することを確認する)
 - [ ] `fasse_front` 側で `flutter build web --dart-define=ENV=stg` を実行し、`npx cdk diff` → `npx cdk deploy` を実行する
 - [ ] デプロイ後、`CfnOutput` のCloudFrontドメインにブラウザでアクセスし、Flutter-Webアプリの表示・SPAルーティング(直接URL指定でのリロード)・WAF関連付け(AWSコンソール上での確認)を確認する
+- [ ] `BucketDeployment`の`memoryLimit`を1024MBに設定し、S3同期処理がOutOfMemoryを起こさず完了することを確認する
 
 ## 将来(申し送り事項、design.md 6節も参照)
 
