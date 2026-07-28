@@ -17,7 +17,20 @@ aws logs tail /aws/lambda/<関数名> --follow
 aws dynamodb scan --table-name fasse-stg-m-item
 
 # create AccessKey
-echo -n "$(openssl rand -base64 32)" | shasum -a 256 | awk '{print $1}'
+export accesskey=`openssl rand -base64 32`
+echo -n ${accesskey} | shasum -a 256 | awk '{print $1}'
+
+# drawio作成
+## cfn-diagram install
+npm i -D @mhlabs/cfn-diagram
+
+## CloudFormation templateを、JSON形式で出力
+export stackname=<StackName>
+mkdir -p drawio
+aws cloudformation get-template --stack-name ${stackname} --query TemplateBody > drawio/deployed-template.json
+
+## cfn-diagramでdrawioファイルを出力
+npx cfn-dia draw.io --template-file drawio/deployed-template.json --output-file drawio/architecture.drawio
 ```
 
 </details>
