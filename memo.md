@@ -2,8 +2,6 @@
 
 ## Flutter
 
-[~2026/07/24]
-
 - 環境初期再構築
 - 単体テストコード化
 - Amazon API Gateway - AWS Lambda - Amazon DynamoDB
@@ -11,16 +9,12 @@
 
 ## Slide
 
-[~2026/07/24]
-
 - WebAPIとは
 - Flutter - SpringBoot - MySQL
 - ローカル開発、AWS接続
 - Postman
 
 ## SpringBoot
-
-[~2026/09/30]
 
 - 環境初期再構築
 - 単体テストコード化
