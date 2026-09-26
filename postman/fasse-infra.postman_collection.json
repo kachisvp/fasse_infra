@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Fasse 仕入・売上管理API (第二弾 stg, JWT認証)",
-    "description": "docs/spec/purchase-sales/openapi.yaml + docs/spec/authentication に対応するPostmanコレクション。「Auth」フォルダの「Get JWT via AccessKey (ルートA)」を実行するとコレクション変数 {{jwt}} が自動設定され、以降の全リクエストは Authorization: Bearer {{jwt}} を継承します(コレクション全体のauth設定による)。POSTリクエストのTestsタブで作成されたidをコレクション変数に自動設定し、後続のGET/PUT/DELETEで {{itemId}} 等として使い回せます。",
+    "description": "docs/specs/purchase-sales/openapi.yaml + docs/specs/authentication に対応するPostmanコレクション。「Auth」フォルダの「Get JWT via AccessKey (ルートA)」を実行するとコレクション変数 {{jwt}} が自動設定され、以降の全リクエストは Authorization: Bearer {{jwt}} を継承します(コレクション全体のauth設定による)。POSTリクエストのTestsタブで作成されたidをコレクション変数に自動設定し、後続のGET/PUT/DELETEで {{itemId}} 等として使い回せます。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -51,7 +51,7 @@
               "mode": "raw",
               "raw": "{\n  \"accessKey\": \"{{accessKey}}\"\n}"
             },
-            "description": "事前に環境変数 {{accessKey}} に、事前登録済みのAccessKeyを設定しておく(docs/spec/authentication REQ-102)。"
+            "description": "事前に環境変数 {{accessKey}} に、事前登録済みのAccessKeyを設定しておく(docs/specs/authentication REQ-102)。"
           }
         },
         {

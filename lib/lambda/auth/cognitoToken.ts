@@ -46,7 +46,7 @@ interface IdTokenPayload {
   exp?: number;
 }
 
-// ルートB(Cognito ID Token): docs/spec/authentication REQ-103, design.md 3.1
+// ルートB(Cognito ID Token): docs/specs/authentication REQ-103, design.md 3.1
 async function verifyIdToken(idToken: string): Promise<{ sub: string; email?: string } | null> {
   const parts = idToken.split('.');
   if (parts.length !== 3) return null;

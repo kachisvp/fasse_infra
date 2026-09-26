@@ -9,7 +9,7 @@ export interface EnvironmentConfig {
 
 const environments: Record<EnvName, EnvironmentConfig> = {
   // stg反映前にバックエンドの変更を一時検証するためのサンドボックス。
-  // 動作確認後はcdk destroyで速やかに破棄する運用とする(docs/spec/authentication REQ-109)
+  // 動作確認後はcdk destroyで速やかに破棄する運用とする(docs/specs/authentication REQ-109)
   dev: {
     envName: 'dev',
     account: process.env.CDK_DEV_ACCOUNT,

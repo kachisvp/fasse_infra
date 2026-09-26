@@ -17,7 +17,7 @@ import { EnvironmentConfig } from './config';
 export interface FasseInfraStackProps extends cdk.StackProps {
   config: EnvironmentConfig;
   // フロントエンド配信用CloudFrontに関連付けるWAFv2 WebACL(scope: CLOUDFRONT)のARN。
-  // us-east-1の専用スタック(FasseWebAclStack)から受け渡される(stg環境のみ。docs/spec/web-hosting REQ-301)。
+  // us-east-1の専用スタック(FasseWebAclStack)から受け渡される(stg環境のみ。docs/specs/web-hosting REQ-301)。
   webAclArn?: string;
 }
 
@@ -111,7 +111,7 @@ export class FasseInfraStack extends cdk.Stack {
     });
 
     // --- Lambda + API Gateway ---
-    // 第二弾よりJWT認証を導入する(docs/spec/authentication参照)。ルートA/ルートBのAPIエンドポイントには
+    // 第二弾よりJWT認証を導入する(docs/specs/authentication参照)。ルートA/ルートBのAPIエンドポイントには
     // NFR-005準拠のスロットリングを設定する(検証環境の通常利用を上回らない一般的な値)。
     const authThrottle = { throttlingRateLimit: 10, throttlingBurstLimit: 20 };
     const api = new apigateway.RestApi(this, 'Api', {
@@ -173,7 +173,7 @@ export class FasseInfraStack extends cdk.Stack {
     };
 
     // KMS公開鍵(PEM)・AccessKeyハッシュマップ・Cognito設定は、鍵作成やUser Pool作成等の手動セットアップ手順
-    // (docs/spec/authentication task.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
+    // (docs/specs/authentication task.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
     // 未設定の間はWebAPI受口・ルートA/ルートBが401を返す(フェイルクローズ)。
     // PEMは改行を含むため、CDKのcontext引数(-c)にそのまま渡すと改行以降が失われる問題があった。
     // base64エンコードした状態で渡し、ここでデコードすることで回避する。
@@ -203,7 +203,7 @@ export class FasseInfraStack extends cdk.Stack {
     };
 
     // ルートA(AccessKey): メンバーごとに個別発行したAccessKeyのSHA-256ハッシュ->メンバー識別子のマップ
-    // (docs/spec/authentication REQ-102/TASK-005)。dev環境・stg環境で同一の値を設定する(REQ-108)。
+    // (docs/specs/authentication REQ-102/TASK-005)。dev環境・stg環境で同一の値を設定する(REQ-108)。
     const accessKeyTokenFunction = new lambdaNodejs.NodejsFunction(this, 'AccessKeyTokenFunction', {
       ...authFunctionProps,
       entry: path.join(__dirname, 'lambda', 'auth', 'accessKeyToken.ts'),
@@ -402,7 +402,7 @@ export class FasseInfraStack extends cdk.Stack {
     addCrudResource('sales', salesFunction);
 
     // --- フロントエンド配信(S3 + CloudFront) ---
-    // 本機能はstg環境のCDKスタックにのみ構築する(docs/spec/web-hosting REQ-401)。dev環境は
+    // 本機能はstg環境のCDKスタックにのみ構築する(docs/specs/web-hosting REQ-401)。dev環境は
     // 動作確認後にcdk destroyで速やかに破棄する一時的なサンドボックスであり、フロントエンド配信という
     // 永続的な公開用途とは性質が異なるため対象外とする。
     if (envName === 'stg') {

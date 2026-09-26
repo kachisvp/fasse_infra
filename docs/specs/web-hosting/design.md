@@ -139,7 +139,7 @@ new FasseInfraStack(app, `FasseInfraStack-${config.envName}`, {
 
 ## 6. 未決定事項・今後の検討課題(申し送り事項)
 
-- WAF方式(IP制限 / Basic認証)の選定。[docs/spec/authentication/design.md](../authentication/design.md) 「7. 未決定事項」と同一の未決定事項であり、本仕様でも決定しない
+- WAF方式(IP制限 / Basic認証)の選定。[docs/specs/authentication/design.md](../authentication/design.md) 「7. 未決定事項」と同一の未決定事項であり、本仕様でも決定しない
 - CloudFrontの独自ドメイン化(Route53/ACM)の要否・時期
 - dev環境・prod環境向けフロントエンド配信構成の要否・時期
 - `flutter build web` を含むCI/CDパイプライン自動化の要否・時期

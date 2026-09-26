@@ -157,7 +157,7 @@ describe('FasseInfraStack (dev環境)', () => {
     devTemplate.resourceCountIs('AWS::Cognito::UserPoolClient', 0);
   });
 
-  test('dev環境はフロントエンド配信用のS3バケット・CloudFrontを作成しない（docs/spec/web-hosting REQ-401）', () => {
+  test('dev環境はフロントエンド配信用のS3バケット・CloudFrontを作成しない（docs/specs/web-hosting REQ-401）', () => {
     devTemplate.resourceCountIs('AWS::S3::Bucket', 0);
     devTemplate.resourceCountIs('AWS::CloudFront::Distribution', 0);
     devTemplate.resourceCountIs('Custom::CDKBucketDeployment', 0);

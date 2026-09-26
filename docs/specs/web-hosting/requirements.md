@@ -4,14 +4,14 @@
 
 `fasse_front`(Flutter-Web)は `flutter build web` によりブラウザで動作する静的ファイル一式(`build/web`)を生成する。現状の `fasse_infra` にはこれを配信する仕組み(S3/CloudFront)が存在しないため、新たに構築する。
 
-また、[docs/spec/authentication/design.md](../authentication/design.md) NFR-004にて「stg環境ではCloudFront + WAFを外側の防御として必須で併用すること」と定められており、その詳細設計は同仕様の「6. 対象外」にて本仕様(別紙)に委譲されている。本仕様はその委譲を引き継ぎ、CloudFrontおよび付随するWAFの詳細を定める。
+また、[docs/specs/authentication/design.md](../authentication/design.md) NFR-004にて「stg環境ではCloudFront + WAFを外側の防御として必須で併用すること」と定められており、その詳細設計は同仕様の「6. 対象外」にて本仕様(別紙)に委譲されている。本仕様はその委譲を引き継ぎ、CloudFrontおよび付随するWAFの詳細を定める。
 
 ## 2. スコープ
 
 - 配信対象: `fasse_front` の `flutter build web` 成果物(`../fasse_front/build/web`)
 - ホスティング: Amazon S3(非公開) + Amazon CloudFront
 - デプロイ手段: `fasse_infra` のCDK(`aws-s3-deployment.BucketDeployment`)が、ローカルパス上のビルド成果物を直接アセットとして取り込み、`cdk deploy` 時にS3へアップロード・CloudFrontキャッシュを無効化する
-- WAF: [docs/spec/authentication/design.md](../authentication/design.md) NFR-004準拠。CloudFront用WAFv2 WebACL(`us-east-1`必須)をAWSマネージドルールのみで構築する
+- WAF: [docs/specs/authentication/design.md](../authentication/design.md) NFR-004準拠。CloudFront用WAFv2 WebACL(`us-east-1`必須)をAWSマネージドルールのみで構築する
 - 対象環境: 本仕様で構築するのは **stg環境のみ** とする(認証仕様と同様、prod環境は現時点で未構築。dev環境も本機能では対象外とする。理由は4節を参照)
 
 ## 3. 前提条件

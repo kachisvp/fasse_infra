@@ -25,7 +25,7 @@ design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし�
 
 ## 第二弾（JWT認証導入）
 
-詳細タスクは`docs/spec/authentication/task.md`を参照。本タスクリストでは、purchase-sales側の実装(既存Lambda・既存スタック)に対する影響のみを記す。
+詳細タスクは`docs/specs/authentication/task.md`を参照。本タスクリストでは、purchase-sales側の実装(既存Lambda・既存スタック)に対する影響のみを記す。
 
 - [ ] `config.ts`の`EnvName`型に`dev`を追加し、`bin/fasse_infra.ts`をデプロイ対象環境の選択に対応させる
 - [ ] 既存の6つのLambda(items/suppliers/menus/tax-rates/purchases/sales)に、共通のJWT検証処理(`lib/lambda/common/`配下に追加)を組み込む

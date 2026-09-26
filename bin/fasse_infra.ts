@@ -7,12 +7,12 @@ import { EnvName, getConfig } from '../lib/config';
 const app = new cdk.App();
 
 // デプロイ対象環境は `cdk deploy -c env=dev` のようにcontextで選択する（未指定時はstg。
-// docs/spec/authentication REQ-109: dev環境は一時的なサンドボックスであり、常設はstgのみ）
+// docs/specs/authentication REQ-109: dev環境は一時的なサンドボックスであり、常設はstgのみ）
 const envName = (app.node.tryGetContext('env') as EnvName | undefined) ?? 'stg';
 const config = getConfig(envName);
 
 // フロントエンド配信用CloudFrontに関連付けるWAFv2 WebACL(scope: CLOUDFRONT)は、
-// us-east-1でのみ作成可能なため専用スタックに分離する(docs/spec/web-hosting REQ-301/REQ-302)。
+// us-east-1でのみ作成可能なため専用スタックに分離する(docs/specs/web-hosting REQ-301/REQ-302)。
 // 本機能はstg環境のみ対象とする(REQ-401)。
 let webAclArn: string | undefined;
 if (envName === 'stg') {

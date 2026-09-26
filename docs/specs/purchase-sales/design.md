@@ -251,7 +251,7 @@ CREATE TABLE t_sales_detail (
 
 ## API仕様
 
-認証方式: 第一弾は疎通確認優先のため認証なし。第二弾以降は`docs/spec/authentication`の方針に従いJWT認証(KMS署名・Bearer Token)を導入する。既存Lambda(items/suppliers/menus/tax-rates/purchases/sales)には検証ロジックを後付けする。
+認証方式: 第一弾は疎通確認優先のため認証なし。第二弾以降は`docs/specs/authentication`の方針に従いJWT認証(KMS署名・Bearer Token)を導入する。既存Lambda(items/suppliers/menus/tax-rates/purchases/sales)には検証ロジックを後付けする。
 
 エンドポイント一覧・リクエスト/レスポンススキーマは[openapi.yaml](./openapi.yaml)を参照。
 
@@ -274,7 +274,7 @@ CREATE TABLE t_sales_detail (
 
 - 環境はstg/prodの2つに分ける想定とし、第一弾で実際に実装(デプロイ)したのはstg環境のみである
 - 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は変数化し、`config.ts`でstgを指定する
-- 第二弾(JWT認証導入)以降は、`docs/spec/authentication`の方針に従いdev環境(stg反映前の一時検証用サンドボックス)を追加する。`config.ts`の`EnvName`型・`bin/fasse_infra.ts`の環境選択方法を拡張する必要がある
+- 第二弾(JWT認証導入)以降は、`docs/specs/authentication`の方針に従いdev環境(stg反映前の一時検証用サンドボックス)を追加する。`config.ts`の`EnvName`型・`bin/fasse_infra.ts`の環境選択方法を拡張する必要がある
 
 ## 未確定事項
 

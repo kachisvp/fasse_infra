@@ -6,7 +6,7 @@ function unauthorized(message: string): APIGatewayProxyResult {
   return json(401, { message });
 }
 
-// WebAPI受口(検証ロジック)は常に単一形式のJWTのみを検証する(docs/spec/authentication REQ-201)。
+// WebAPI受口(検証ロジック)は常に単一形式のJWTのみを検証する(docs/specs/authentication REQ-201)。
 // KMS公開鍵はデプロイ時にLambda環境変数へ設置し、リクエストの都度KMSへアクセスしない(REQ-202)。
 export function withJwtAuth(handler: APIGatewayProxyHandler): APIGatewayProxyHandler {
   return async (event, context, callback) => {

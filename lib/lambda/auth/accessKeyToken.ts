@@ -7,7 +7,7 @@ const KMS_KEY_ID = process.env.KMS_KEY_ID!;
 const JWT_ISSUER = process.env.JWT_ISSUER ?? 'fasse-auth';
 
 // メンバーごとに個別発行したAccessKeyのSHA-256ハッシュ -> メンバー識別子のマップ。
-// 平文のAccessKeyをLambda側でも保持しない(docs/spec/authentication REQ-102)。
+// 平文のAccessKeyをLambda側でも保持しない(docs/specs/authentication REQ-102)。
 // dev環境・stg環境は同一のマップを共用する(REQ-108)。
 function loadAccessKeyHashMap(): Record<string, string> {
   const raw = process.env.ACCESS_KEY_HASH_MAP_JSON;
@@ -18,7 +18,7 @@ function hashAccessKey(accessKey: string): string {
   return createHash('sha256').update(accessKey).digest('hex');
 }
 
-// ルートA(AccessKey): docs/spec/authentication REQ-102, design.md 3.1
+// ルートA(AccessKey): docs/specs/authentication REQ-102, design.md 3.1
 export const handler: APIGatewayProxyHandler = async (event) => {
   let body: { accessKey?: string };
   try {

@@ -13,7 +13,7 @@ function base64UrlDecodeJson<T>(part: string): T {
 }
 
 // KMSのRSASSA_PKCS1_V1_5_SHA_256(alg: RS256)で署名されたJWTを、エクスポート済みの
-// KMS公開鍵(PEM)で検証する。KMSへの都度アクセスは発生しない(docs/spec/authentication REQ-202)。
+// KMS公開鍵(PEM)で検証する。KMSへの都度アクセスは発生しない(docs/specs/authentication REQ-202)。
 export function verifyJwt(token: string, publicKeyPem: string): JwtClaims | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
