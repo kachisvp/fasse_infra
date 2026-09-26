@@ -2,8 +2,8 @@
   "name": "fasse_infra",
   "version": "0.1.0",
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
+    "build": "tsc --noEmit",
+    "watch": "tsc --noEmit -w",
     "test": "jest",
     "cdk": "cdk"
   },
