@@ -2,7 +2,7 @@
 
 ## 1. 背景・目的
 
-`fasse_front`(Flutter-Web)は `flutter build web` によりブラウザで動作する静的ファイル一式(`build/web`)を生成する。現状の `fasse_infra` にはこれを配信する仕組み(S3/CloudFront)が存在しないため、新たに構築する。
+`fasse_front`(Flutter-Web)は `flutter build web` によりブラウザで動作する静的ファイル一式(`build/web`)を生成する。これを配信する仕組み(S3/CloudFront)を `fasse_infra` で構築する。
 
 また、[docs/specs/authentication/design.md](../authentication/design.md) NFR-004にて「stg環境ではCloudFront + WAFを外側の防御として必須で併用すること」と定められており、その詳細設計は同仕様の「6. 対象外」にて本仕様(別紙)に委譲されている。本仕様はその委譲を引き継ぎ、CloudFrontおよび付随するWAFの詳細を定める。
 
@@ -41,7 +41,7 @@
 
 - REQ-301: CloudFront用のWAFv2 WebACL(`scope: CLOUDFRONT`)を作成し、CloudFront Distributionに関連付けること
 - REQ-302: `scope: CLOUDFRONT` のWebACLは `us-east-1` リージョンでのみ作成可能であるため、stgスタックの主リージョン(`ap-northeast-1`)とは別に、`us-east-1` の専用スタックを作成し、`crossRegionReferences: true` によりWebACLのARNをstgスタック側へ受け渡すこと
-- REQ-303: 適用するルールは、既存のAPI Gateway用WAF(`lib/fasse_infra-stack.ts` の `ApiWebAcl`)と同様、AWSマネージドルール(`AWSManagedRulesCommonRuleSet`)のみとする。IP制限・Basic認証等の追加方式は、認証仕様の「7. 未決定事項」と同一の未決定事項として扱い、本仕様でも決定しない(6節参照)
+- REQ-303: 適用するルールは、API Gateway用WAF(`lib/fasse_infra-stack.ts` の `ApiWebAcl`)と同様、AWSマネージドルール(`AWSManagedRulesCommonRuleSet`)のみとする。IP制限・Basic認証等の追加方式は、認証仕様の「7. 未決定事項」と同一の未決定事項として扱い、本仕様でも決定しない(6節参照)
 
 ### 4.4 対象環境
 
@@ -55,7 +55,7 @@
 
 ## 6. 対象外(Out of Scope)
 
-- CloudFrontの独自ドメイン(Route53ホストゾーン・ACM証明書)の導入。将来必要になった時点で別途仕様化する
+- CloudFrontの独自ドメイン(Route53ホストゾーン・ACM証明書)の導入。必要になった時点で別途仕様化する
 - WAFにおけるIP制限・Basic認証等、AWSマネージドルール以外の追加防御方式の選定(認証仕様design.md「7. 未決定事項」と同一の未決定事項)
 - dev環境・prod環境向けのフロントエンド配信構成の構築
-- `flutter build web` の自動実行を含むCI/CDパイプラインの構築(現時点ではデプロイ担当者が手動で `flutter build web` → `cdk deploy` を実行する運用とする。自動化は将来の検討課題とする)
+- `flutter build web` の自動実行を含むCI/CDパイプラインの構築(現時点ではデプロイ担当者が手動で `flutter build web` → `cdk deploy` を実行する運用とする。自動化は今後の検討課題とする)

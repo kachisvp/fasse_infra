@@ -2,15 +2,22 @@
 
 ## 1. 技術スタック
 
-| 層 | 第一弾・第二弾(現行) | 将来 |
+| 層 | 技術 | 環境 |
 |---|---|---|
-| フロントエンド | Flutter(Web) | Flutter(Web) |
-| 配信 | S3 + CloudFront(stg のみ) | 同左 |
-| WebAPI 受口 | API Gateway + Lambda(Node.js 20 / TypeScript) | SpringBoot(Fargate、コンテナ) |
-| データストア | DynamoDB | Aurora MySQL Serverless |
-| 認証 | 自前 JWT(KMS 非対称鍵 RS256 署名)、Cognito User Pool | 同左(変更しない) |
-| 防御 | WAFv2(AWS マネージドルール) | 同左 |
-| IaC | AWS CDK v2(TypeScript) | 同左 |
+| フロントエンド | Flutter(Web) | - |
+| 配信 | S3 + CloudFront(OAC、HTTPS 強制、SPA 対応) | stg のみ |
+| WebAPI 受口 | API Gateway + Lambda(Node.js 20 / TypeScript) | dev / stg |
+| データストア | DynamoDB(オンデマンド) | dev / stg |
+| 認証(JWT 発行) | Lambda + KMS 非対称鍵(RSA_2048 / RS256 署名)。AccessKey 経路と Cognito 経路の 2 つ | dev / stg |
+| 認証(JWT 検証) | 各 Lambda で KMS 公開鍵(PEM)により検証 | dev / stg |
+| ID 基盤 | Cognito User Pool(Hosted UI、Authorization Code Grant + PKCE) | stg のみ(dev は stg を共用) |
+| 防御 | WAFv2(AWS マネージドルール)を API Gateway と CloudFront に関連付け | stg のみ |
+| IaC | AWS CDK v2(TypeScript) | - |
+
+### 今後の方針
+
+- WebAPI 受口は SpringBoot(Fargate、コンテナ)に、データストアは Aurora MySQL Serverless に置き換える
+- JWT の発行・検証の仕組み(KMS 署名、公開鍵による検証)は置き換え後も変えない
 
 ## 2. 環境
 

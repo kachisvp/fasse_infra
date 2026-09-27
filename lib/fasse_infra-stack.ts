@@ -173,7 +173,7 @@ export class FasseInfraStack extends cdk.Stack {
     };
 
     // KMS公開鍵(PEM)・AccessKeyハッシュマップ・Cognito設定は、鍵作成やUser Pool作成等の手動セットアップ手順
-    // (docs/specs/authentication task.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
+    // (docs/specs/authentication tasks.md TASK-003/004/005/201〜204)完了後にCDK contextで設定する。
     // 未設定の間はWebAPI受口・ルートA/ルートBが401を返す(フェイルクローズ)。
     // PEMは改行を含むため、CDKのcontext引数(-c)にそのまま渡すと改行以降が失われる問題があった。
     // base64エンコードした状態で渡し、ここでデコードすることで回避する。

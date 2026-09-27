@@ -2,16 +2,16 @@
 
 ## 1. 背景・目的
 
-本プロジェクトのWebAPI(Flutter-Web ⇄ API Gateway ⇄ WebAPI受口 ⇄ DB)に対して、環境ごとに適切な認証方式を提供しつつ、**WebAPI受口(検証ロジック)は常に単一形式のJWTのみを検証すればよい**構成とする。これにより、開発初期(Mock構成)から本番相当構成への移行時に、認証・認可ロジックの作り直しを不要にする。
+本プロジェクトのWebAPI(Flutter-Web ⇄ API Gateway ⇄ WebAPI受口 ⇄ DB)に対して、環境ごとに適切な認証方式を提供しつつ、**WebAPI受口(検証ロジック)は常に単一形式のJWTのみを検証すればよい**構成とする。これにより、WebAPI受口をSpring Boot(Fargate)へ置き換える際に、認証・認可ロジックの作り直しを不要にする。
 
 ## 2. スコープ
 
 - フロントエンド: Flutter-Web
 - JWT発行基盤: Amazon API Gateway + AWS Lambda + AWS KMS(非対称鍵)
-- WebAPI受口: 開発初期はLambda(Mock)、開発後期はSpring Boot(コンテナ化しFargateで稼働)
+- WebAPI受口: Lambda。今後Spring Boot(コンテナ化しFargateで稼働)に置き換える
 - ID基盤(stg環境以降): Amazon Cognito User Pool
-- データストア: 開発初期はDynamoDB(Mock)、本番相当はAmazon Aurora MySQL Serverless
-- 構築環境: 本仕様の構築対象は、stg環境(唯一の永続的なバックエンド環境)と、その一時的な検証用サンドボックスであるdev環境の2つに限定する。prod環境は、構築時期・詳細要件を別途検討したうえで、将来別仕様として構築する。
+- データストア: DynamoDB。今後Amazon Aurora MySQL Serverlessに置き換える
+- 構築環境: 本仕様の構築対象は、stg環境(唯一の永続的なバックエンド環境)と、その一時的な検証用サンドボックスであるdev環境の2つに限定する。prod環境は未構築であり、構築時期・詳細要件を別途検討したうえで別仕様として構築する。
 
 ## 3. 環境定義
 
@@ -23,17 +23,17 @@
 |---|---|---|---|
 | `ENV=local`(ローカル実行) | `.env`にAccessKeyを保持(ビルドフレーバーで読込) | AccessKey → JWT発行API(ルートA) | AWS stg環境のWebAPI受口 |
 | `ENV=stg`(AWSホスティング) | `.env`にAccessKeyを保持しない。Cognitoログイン | Cognito ID Token → JWT発行API(ルートB) | AWS stg環境のWebAPI受口 |
-| `ENV=prod`(将来) | stg環境と同様の想定(詳細は別途) | Cognito ID Token → JWT発行API(ルートB) | AWS prod環境のWebAPI受口(現時点では未構築) |
+| `ENV=prod`(未構築) | stg環境と同様の想定(詳細は別途) | Cognito ID Token → JWT発行API(ルートB) | AWS prod環境のWebAPI受口(現時点では未構築) |
 
 **バックエンドのAWS環境**
 
 | 環境 | 役割 | ルートA/ルートB | KMSキー | WebAPI受口 | データストア |
 |---|---|---|---|---|---|
-| stg環境 | 唯一の永続的なバックエンド環境。ローカル実行・AWSホスト済み双方のフロントエンドから常時接続される | 両方常設 | dev環境と共用の単一鍵 | 開発初期: Lambda(Mock) / 開発後期: Fargate(Spring Boot) | 開発初期: DynamoDB(Mock) / 開発後期: Aurora MySQL Serverless |
+| stg環境 | 唯一の永続的なバックエンド環境。ローカル実行・AWSホスト済み双方のフロントエンドから常時接続される | 両方常設 | dev環境と共用の単一鍵 | Lambda(今後Fargate(Spring Boot)に置き換え) | DynamoDB(今後Aurora MySQL Serverlessに置き換え) |
 | dev環境 | stg環境への変更反映前に、バックエンドを一時的に検証するためのサンドボックス。stg環境と同一構成をミラーする(通常のフロントエンドからは接続しない) | 両方常設(stgのミラー) | stg環境と共用の単一鍵 | stg環境と同一構成 | stg環境と同一構成 |
-| prod環境 | 将来の本番環境(詳細は別途) | 現時点では未構築 | 未定 | Fargate(Spring Boot) | Aurora MySQL Serverless |
+| prod環境 | 本番環境(未構築。詳細は別途) | 現時点では未構築 | 未定 | Fargate(Spring Boot) | Aurora MySQL Serverless |
 
-> prod環境の行は将来の参考情報として記載する。本仕様の構築対象はstg環境・dev環境の2つとし(2.スコープ参照)、prod環境は構築時期到来時に別途仕様化する。
+> prod環境の行は参考情報として記載する。本仕様の構築対象はstg環境・dev環境の2つとし(2.スコープ参照)、prod環境は構築時期到来時に別途仕様化する。
 
 ## 4. 機能要件
 
@@ -54,7 +54,7 @@
 - REQ-109: dev環境は、stg環境への変更反映前の動作確認が完了し次第、速やかに`cdk destroy`で破棄すること。稼働期間を動作確認に必要な最小限にとどめることで、dev環境のルートA/ルートBの露出期間を必要最小限に抑える(NFR-004参照)。
 - REQ-110: Cognito User Pool・App Client・Hosted UIドメインは、stg環境のCDKスタックにのみ作成すること。dev環境は、stg環境のUser Pool ID/Client IDをCDK context経由で共用する(REQ-107準拠。dev環境専用のUser Poolは作成しない)。ユーザー登録は運営者による事前登録方式のみとし(セルフサインアップは無効化)、`demo1`, `demo2`のように事前登録した複数のデモユーザーのみがログイン可能とする。これにより、社外の第三者による任意のアカウント作成を防止する。App Clientはpublicクライアント(シークレットなし)とし、Authorization Code Grant + PKCEを用いる。
 
-### 4.2 WebAPI受口(Spring Boot / Lambda Mock 共通)
+### 4.2 WebAPI受口(Lambda / Spring Boot 共通)
 
 - REQ-201: WebAPI受口が検証するJWTの発行者は、JWT発行基盤(KMS署名)の単一発行者に限定すること(Cognitoが発行するJWTを直接検証する実装は含めない。マルチ発行者対応は不要とする)。
 - REQ-202: 検証は、KMSの公開鍵(エクスポート済みPEM)をWebAPI受口内にあらかじめ保持し、それを用いて行うこと(KMSへの都度アクセスが発生しない構成とする)。dev環境・stg環境は同一のKMSキーを共用するため、公開鍵PEMも共通のものを両環境に配置する(REQ-108準拠)。
@@ -70,11 +70,11 @@
 - REQ-305: WebAPIから401が返却された場合、JWT期限切れ/無効と判断し、再度JWT取得フローを実行すること(`ENV=local`は自動再発行、それ以外はログイン画面への再遷移)。
 - REQ-306: AccessKeyの実体を保持してよいビルド成果物は、`ENV=local`のビルド成果物に限定すること(`ENV=local`以外のビルドフレーバーのビルドプロセスからは、AccessKeyの参照元(`.env`等)自体を除外すること)。
 
-### 4.4 移行要件
+### 4.4 WebAPI受口の置き換え要件
 
-- REQ-401: 開発初期はWebAPI受口・データストアをAPI Gateway + Lambda(Mock) + DynamoDBとする。
-- REQ-402: Spring Boot側の実装が整い次第、WebAPI受口をコンテナ化しFargateへ、データストアをAurora MySQL Serverlessへ移行する。
-- REQ-403: 移行の前後でJWT発行・検証の仕組みを同一に保つこと(検証ロジックの作り直しが不要であることを移行完了の判定基準とする)。
+- REQ-401: WebAPI受口・データストアは、Spring Bootへの置き換えまではAPI Gateway + Lambda + DynamoDBとする。
+- REQ-402: Spring Boot側の実装が整い次第、WebAPI受口をコンテナ化しFargateへ、データストアをAurora MySQL Serverlessへ置き換える。
+- REQ-403: 置き換えの前後でJWT発行・検証の仕組みを同一に保つこと(検証ロジックの作り直しが不要であることを置き換え完了の判定基準とする)。
 
 ## 5. 非機能要件
 
@@ -90,7 +90,7 @@
 
 本仕様が扱う範囲は4節・5節に定める内容に限定し、以下は対象外とする。
 
-- リフレッシュトークン方式の導入(開発期間中は単一JWTで妥協する方針のため、本仕様の対象外。本番移行時の再検討事項とする)。
+- リフレッシュトークン方式の導入(開発期間中は単一JWTで妥協する方針のため、本仕様の対象外。prod環境構築時の再検討事項とする)。
 - Cognitoにおけるソーシャルログイン・MFA等の詳細設定。
 - WAF・CloudFrontの詳細設計(別紙とする)。
 - prod環境のCDKスタック構築(現時点ではdev環境・stg環境のみ構築する。本番環境の構築時期・詳細要件は別途検討する)。

@@ -1,41 +1,47 @@
 # 実装タスク
 
-## 前提
+## 仕様の承認
 
 - [x] requirements.md のレビュー・承認
 - [x] design.md のレビュー・承認（DynamoDBのアクセスパターン・キー設計、CDK構成、環境分離を含む）
 - [ ] openapi.yaml のレビュー・承認（エンドポイント・スキーマ）
+- [ ] openapi.yaml にJWT認証（`securitySchemes` / `security`、401レスポンス）を反映する
 
-## 第一弾（APIGateway - Lambda - DynamoDB, stg環境）
+## 環境・スタック
 
-design.mdで確定した内容（テーブル構成・PK/SK/GSI、認証なし、既存スタックへの追加、Node.js+TypeScript、stg/prod分離等）に基づく。
+- [x] `lib/config.ts`に環境（dev/stg）ごとのパラメータ（アカウントID/リージョン/リソース名等）を定義する
+- [x] `bin/fasse_infra.ts`でデプロイ対象環境をcontext（`-c env=<dev|stg>`）で選択できるようにする
 
-- [x] `config.ts`を作成し、stg環境用のパラメータ（アカウントID/リージョン/リソース名等）を定義する
-- [x] DynamoDBテーブル定義（CDK、`lib/fasse_infra-stack.ts`に追加）: counters（採番用）
-- [x] DynamoDBテーブル定義（CDK）: m_item, m_supplier, m_menu（idはcountersテーブルで連番採番）
-- [x] DynamoDBテーブル定義（CDK）: t_purchase_header（+ gsi_purchase_date）, t_purchase_detail
-- [x] DynamoDBテーブル定義（CDK）: t_sales_header（+ gsi_business_date）, t_sales_detail
-- [x] Lambda実装（Node.js + TypeScript）: マスタCRUD（m_item, m_supplier, m_menu、id採番・論理削除含む）
-- [x] Lambda実装（Node.js + TypeScript）: 仕入伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、purchase_no採番はpurchase_date単位）
-- [x] Lambda実装（Node.js + TypeScript）: 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、business_date必須、sales_no採番はbusiness_date単位）
-- [x] APIGateway定義・ルーティング（CDK、認証なし）
-- [x] 単体テスト
-- [x] APIレベルでの疎通確認（stg環境、items/suppliers/purchasesのCRUD・TransactWriteItems・日付範囲一覧を確認済み）
-- [ ] Flutterアプリからの疎通確認（別途Flutterプロジェクト側の対応が必要）
+## DynamoDB（`lib/fasse_infra-stack.ts`）
 
-## 第二弾（JWT認証導入）
+- [x] counters（採番用）
+- [x] m_item, m_supplier, m_menu（idはcountersテーブルで連番採番）
+- [x] m_tax_rate（tax_category + valid_fromの複合キー）
+- [x] t_purchase_header（+ gsi_purchase_date）, t_purchase_detail
+- [x] t_sales_header（+ gsi_business_date）, t_sales_detail
 
-詳細タスクは`docs/specs/authentication/task.md`を参照。本タスクリストでは、purchase-sales側の実装(既存Lambda・既存スタック)に対する影響のみを記す。
+## Lambda（Node.js + TypeScript）
 
-- [ ] `config.ts`の`EnvName`型に`dev`を追加し、`bin/fasse_infra.ts`をデプロイ対象環境の選択に対応させる
-- [ ] 既存の6つのLambda(items/suppliers/menus/tax-rates/purchases/sales)に、共通のJWT検証処理(`lib/lambda/common/`配下に追加)を組み込む
-- [ ] JWT発行基盤(ルートA/ルートB、KMSキー)を既存の`lib/fasse_infra-stack.ts`に追加する(スタック分割はしない方針を踏襲)
-- [ ] API GatewayのCORS設定(`defaultCorsPreflightOptions`)に`Authorization`ヘッダーを含む`allowHeaders`を明示する
-- [ ] stg環境へのWAF追加、API Gatewayのスロットリング設定を行う(NFR-004/NFR-005準拠)
+- [x] マスタCRUD（m_item, m_supplier, m_menu、id採番・論理削除含む）
+- [x] 消費税率マスタCRUD（m_tax_rate、物理削除）
+- [x] 仕入伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、purchase_no採番はpurchase_date単位）
+- [x] 売上伝票CRUD（登録はTransactWriteItemsでヘッダ+明細、business_date必須、sales_no採番はbusiness_date単位）
+- [x] 全Lambdaに共通のJWT検証処理（`withJwtAuth`）を組み込む（`docs/specs/authentication` TASK-301/301b）
 
-## 将来（Aurora MySQL Serverlessへの移行）
+## APIGateway
 
-- [x] データモデルのFK/型不整合の解消（design.md「将来形」DDLで対応済み）
+- [x] ルーティング定義（CDK）
+- [x] CORS設定（`defaultCorsPreflightOptions`の`allowHeaders`に`Authorization`を含める）
+
+## テスト・動作確認
+
+- [x] 単体テスト（CDK Template、マスタ・伝票ハンドラ）
+- [x] APIレベルでの疎通確認（stg環境、items/suppliers/purchasesのCRUD・TransactWriteItems・日付範囲一覧）
+- [ ] Flutterアプリからの疎通確認（fasse_front側の対応が必要）
+
+## SpringBoot(Fargate) / Aurora MySQL Serverlessへの置き換え
+
+- [x] RDBスキーマのFK/型整合（design.md「RDBスキーマ」）
 - [ ] Auroraスキーマ確定・マイグレーション作成
-- [ ] Lambda実装をAurora接続に置き換え
-- [ ] 既存DynamoDBデータの移行方針検討
+- [ ] WebAPI受口をSpringBoot(Fargate)に置き換える
+- [ ] DynamoDBデータの移行方針検討

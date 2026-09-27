@@ -2,25 +2,25 @@
 
 ## アーキテクチャ
 
-第一弾:
+現在の構成:
 
 ```
 Flutter (Client) → Amazon API Gateway → AWS Lambda → Amazon DynamoDB
 ```
 
-将来:
+今後の方針（置き換え後の構成）:
 
 ```
 Flutter (Client) → AWS Fargate (SpringBoot) → Amazon Aurora MySQL Serverless
 ```
 
-第一弾のAPIGateway - Lambda構成は暫定的なWebAPI受口であり、将来的にはSpringBoot(Fargate)がWebAPIを直接提供する構成に置き換わる。
+APIGateway - Lambda構成はSpringBoot(Fargate)への置き換えまでのWebAPI受口である。置き換えの前後でAPI仕様（[openapi.yaml](./openapi.yaml)）は変えない。
 
 ## データモデル
 
-### 将来形（Aurora MySQL Serverless移行後・最終形）
+### RDBスキーマ（Aurora MySQL Serverless用）
 
-memo.md初稿のDDLをベースに、型不整合等を修正したもの（下記「修正内容」参照）。
+置き換え後のAurora MySQL Serverlessで用いるスキーマ。DynamoDBのテーブル構成・ID採番方式はこのスキーマに合わせる。
 
 ```sql
 -- マスタ（IDはBIGINT AUTO_INCREMENT）
@@ -149,16 +149,16 @@ CREATE TABLE t_sales_detail (
 );
 ```
 
-**修正内容**
+**スキーマ設計上の決定**
 
-- マスタ（`m_item`, `m_supplier`, `m_menu`）のPKは`BIGINT AUTO_INCREMENT`にする（UUIDは不要な容量・インデックスコストがかかるため）
-- 伝票系（`t_purchase_header/detail`, `t_sales_header/detail`）のPKは`CHAR(36)`（UUID）のまま維持し、`t_purchase_detail.purchase_id` / `t_sales_detail.sales_id`も`CHAR(36)`に統一した（旧: ここが`BIGINT`でPKと型不一致だった）
-- テーブル定義順序はFK依存順（マスタ→header→detail）に統一し、インラインのFK制約定義のみで完結するようにした
-- `t_purchase_header.supplier_id`に不足していたFK制約（`m_supplier(id)`）を追加した
-- `m_supplier`に`is_active`を追加した（第一弾で論理削除の対象とするため）
-- `t_sales_header`に`business_date`（営業日）を追加した。深夜営業などで日付をまたぐ取引を、実際の会計上の営業日に正しく紐付けるための項目
-- `staff_id`は削除した。日本では伝票単位で担当者を紐付ける文化が無いため、当面不要と判断
-- `m_tax_rate`（消費税率マスタ）を新設し、`m_item` / `m_menu`に`tax_category`、`t_purchase_detail` / `t_sales_detail`に`tax_rate`を追加した（詳細は下記「消費税の扱い」参照）
+- マスタ（`m_item`, `m_supplier`, `m_menu`）のPKは`BIGINT AUTO_INCREMENT`とする（UUIDは不要な容量・インデックスコストがかかるため）
+- 伝票系（`t_purchase_header/detail`, `t_sales_header/detail`）のPKは`CHAR(36)`（UUID）とし、明細の`purchase_id` / `sales_id`もヘッダのPKと同じ`CHAR(36)`とする
+- テーブル定義順序はFK依存順（マスタ→header→detail）とし、インラインのFK制約定義のみで完結させる
+- `t_purchase_header.supplier_id`は`m_supplier(id)`をFK参照する
+- `m_item` / `m_supplier` / `m_menu`は`is_active`を持ち、削除は論理削除とする
+- `t_sales_header`は`business_date`（営業日）を持つ。深夜営業などで日付をまたぐ取引を、実際の会計上の営業日に正しく紐付けるための項目
+- 伝票に担当者（`staff_id`）は持たない。日本では伝票単位で担当者を紐付ける文化が無いため
+- 消費税率マスタ`m_tax_rate`を持ち、`m_item` / `m_menu`は`tax_category`、`t_purchase_detail` / `t_sales_detail`は`tax_rate`を持つ（詳細は下記「消費税の扱い」参照）
 
 **消費税の扱い**
 
@@ -174,7 +174,7 @@ CREATE TABLE t_sales_detail (
   4. 各グループの端数処理後の値を合計したものを`tax_amount`とする
   - 明細ごとに`amount × tax_rate`を都度端数処理してから合計する実装は行わない（複数明細で誤差が蓄積し、インボイス制度の要件にも反するため）
 
-### 第一弾（DynamoDB）
+### DynamoDB（現在のデータストア）
 
 対象業種は飲食店（テーブル会計）。以下の方針で確定。
 
@@ -182,7 +182,7 @@ CREATE TABLE t_sales_detail (
 
 - IDを指定した1件取得
 - 日付範囲での一覧取得（仕入: `purchase_date`、売上: `business_date`）
-- 仕入先/メニュー単位の集計・一覧は第一弾ではスコープ外
+- 仕入先/メニュー単位の集計・一覧はスコープ外
 
 **テーブル構成**
 
@@ -251,7 +251,7 @@ CREATE TABLE t_sales_detail (
 
 ## API仕様
 
-認証方式: 第一弾は疎通確認優先のため認証なし。第二弾以降は`docs/specs/authentication`の方針に従いJWT認証(KMS署名・Bearer Token)を導入する。既存Lambda(items/suppliers/menus/tax-rates/purchases/sales)には検証ロジックを後付けする。
+認証方式: 全エンドポイントでJWT認証(KMS署名・Bearer Token)を必須とする。検証は各Lambda(items/suppliers/menus/tax-rates/purchases/sales)で共通の検証処理(`lib/lambda/common/auth.ts`の`withJwtAuth`)により行う。詳細は`docs/specs/authentication`を参照。
 
 エンドポイント一覧・リクエスト/レスポンススキーマは[openapi.yaml](./openapi.yaml)を参照。
 
@@ -264,7 +264,7 @@ CREATE TABLE t_sales_detail (
 
 **CDKスタック構成**
 
-- 既存の`lib/fasse_infra-stack.ts`にDynamoDB/Lambda/APIGatewayを追加する（スタック分割はしない）
+- DynamoDB/Lambda/APIGatewayは`lib/fasse_infra-stack.ts`の`FasseInfraStack`に定義する（スタック分割はしない）
 
 **Lambda実装**
 
@@ -272,10 +272,9 @@ CREATE TABLE t_sales_detail (
 
 **環境分離**
 
-- 環境はstg/prodの2つに分ける想定とし、第一弾で実際に実装(デプロイ)したのはstg環境のみである
-- 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は変数化し、`config.ts`でstgを指定する
-- 第二弾(JWT認証導入)以降は、`docs/specs/authentication`の方針に従いdev環境(stg反映前の一時検証用サンドボックス)を追加する。`config.ts`の`EnvName`型・`bin/fasse_infra.ts`の環境選択方法を拡張する必要がある
+- 構築する環境はstg（唯一の永続的な環境）とdev（stg反映前の一時検証用サンドボックス）の2つとする。prod環境は未構築（`docs/specs/authentication`参照）
+- 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は`lib/config.ts`で定義し、`cdk deploy -c env=<dev|stg>`で選択する（未指定時はstg）
 
 ## 未確定事項
 
-なし（第一弾のスコープ・設計は本ドキュメントで確定）
+なし

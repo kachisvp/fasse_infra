@@ -3,9 +3,8 @@
 ## 背景
 
 - フロントエンド: Flutter
-- バックエンド: 将来的にSpringBoot(Fargate)で実装予定
-- 第一弾はAWS CDKで構築したAPIGateway - Lambda - DynamoDBでWebAPIの受口のみ構築する
-- 将来的にFlutter → Fargate(SpringBoot) → Amazon Aurora MySQL Serverlessへ移行する（APIGateway - Lambdaは第一弾限定の暫定構成）
+- WebAPI受口: AWS CDKで構築したAPIGateway - Lambda - DynamoDB
+- 今後の方針: WebAPI受口をSpringBoot(Fargate)、データストアをAmazon Aurora MySQL Serverlessに置き換える（APIGateway - Lambdaは置き換えまでの構成）
 
 ## 目的
 
@@ -36,9 +35,12 @@
 - [ ] ヘッダと明細は登録時に整合性が保たれる（片方だけ登録される状態にならない）
 - [ ] 伝票更新時、明細は送信された内容で全洗い替えされる（送らなかった明細は削除される）
 
-## スコープ外（第一弾）
+## 認証
 
-- 認証・認可（第一弾は認証なし。第二弾以降は`docs/specs/authentication`の方針に従いJWT認証を導入する）
+- 全APIはJWT認証（Bearer Token）を必須とする。詳細は`docs/specs/authentication`を参照
+
+## スコープ外
+
 - 仕入先/メニュー単位の集計・一覧
 - 集計・レポーティング機能
-- SpringBootへの本実装移行（第一弾はAPIGateway + Lambdaの受口のみ）
+- SpringBootへの置き換え（今後の方針。置き換えまではAPIGateway + Lambdaの受口とする）

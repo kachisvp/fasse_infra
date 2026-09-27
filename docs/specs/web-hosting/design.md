@@ -33,8 +33,8 @@ flowchart LR
 
 ## 2. 設計方針
 
-- 既存の `lib/fasse_infra-stack.ts` の方針(スタック分割をせず単一スタックに集約)を踏襲し、S3バケット・CloudFront Distributionは `FasseInfraStack` 内に追加する
-- ただし、CloudFront用WAFv2 WebACL(`scope: CLOUDFRONT`)は技術的制約により `us-east-1` でしか作成できないため、この部分のみ例外的に別スタック(`FasseWebAclStack-stg`)に切り出し、`crossRegionReferences: true` でARNを受け渡す。この分割はアーキテクチャ上の都合であり、それ以外の点(環境ごとのスタック運用等)は既存方針を変更しない
+- スタックは分割せず単一スタックに集約する方針に従い、S3バケット・CloudFront Distributionは `lib/fasse_infra-stack.ts` の `FasseInfraStack` 内に定義する
+- ただし、CloudFront用WAFv2 WebACL(`scope: CLOUDFRONT`)は技術的制約により `us-east-1` でしか作成できないため、この部分のみ例外的に別スタック(`FasseWebAclStack-stg`)に切り出し、`crossRegionReferences: true` でARNを受け渡す。この分割はアーキテクチャ上の都合であり、それ以外の点(環境ごとのスタック運用等)は上記の方針に従う
 - ビルド成果物の取り込みは `aws-s3-deployment` モジュールの `BucketDeployment` + `Source.asset('../fasse_front/build/web')` を用いる。CDKアセットの仕組みにより、`cdk synth`/`cdk deploy` 時点でディレクトリの中身がハッシュ化されS3(CDK Bootstrap用バケット)経由でステージングされ、`BucketDeployment` がカスタムリソース(Lambda)を通じて配信用バケットへ同期する
 
 ## 3. コンポーネント設計
@@ -91,7 +91,7 @@ new s3deploy.BucketDeployment(this, 'DeployWebsite', {
 
 - `sources` に `../fasse_front/build/web` を指定することで、`fasse_front` 側でのビルド成果物をそのままCDKアセットとして取り込む(REQ-104配下の実装)
 - `distribution`/`distributionPaths: ['/*']` を指定することで、デプロイの都度CloudFrontのキャッシュを自動的に無効化する(REQ-206)。手動での `aws cloudfront create-invalidation` 実行は不要とする
-- `memoryLimit` はCDKの既定値(128MB)のままだと、Flutter-Webビルド成果物(多数の小ファイル・数十MB規模)の同期処理中にLambdaがメモリ不足(`Runtime.OutOfMemory`)でクラッシュすることを2026-07-20のstg環境デプロイで確認した(既定Lambdaメモリ128MBに対しMax Memory Used 127MBで異常終了)。同期処理に必要なメモリを十分確保するため`1024`(MB)に明示設定する
+- `memoryLimit` はCDKの既定値(128MB)のままだと、Flutter-Webビルド成果物(多数の小ファイル・数十MB規模)の同期処理中にLambdaがメモリ不足(`Runtime.OutOfMemory`)でクラッシュする(既定Lambdaメモリ128MBに対しMax Memory Used 127MBで異常終了する)。同期処理に必要なメモリを十分確保するため`1024`(MB)に明示設定する
 
 ### 3.4 WAF(us-east-1専用スタック)
 
@@ -121,7 +121,7 @@ new FasseInfraStack(app, `FasseInfraStack-${config.envName}`, {
 });
 ```
 
-- `FasseWebAclStack` は `scope: CLOUDFRONT` のWAFv2 WebACLを1つだけ持つ小さなスタックとし、既存のAPI Gateway用WAF(`ApiWebAcl`、`scope: REGIONAL`)と同様に `AWSManagedRulesCommonRuleSet` のみを適用する(REQ-303)
+- `FasseWebAclStack` は `scope: CLOUDFRONT` のWAFv2 WebACLを1つだけ持つ小さなスタックとし、API Gateway用WAF(`ApiWebAcl`、`scope: REGIONAL`)と同様に `AWSManagedRulesCommonRuleSet` のみを適用する(REQ-303)
 - `crossRegionReferences: true` をアプリ・両スタックの双方に設定することで、CDKが内部的にSSMパラメータ経由でARNを解決し、us-east-1のWebACL ARNをap-northeast-1側のCloudFront Distributionへ受け渡す
 - 本機能はstg環境のみ対象のため、`envName === 'stg'` の場合にのみ `FasseWebAclStack` を作成する(REQ-401)。dev環境等でこの分岐に入らない場合、`webAclId` は `undefined` となりWAF未関連付けのCloudFrontとなるが、本仕様ではstg以外のフロントエンド配信自体を構築しないため実質的に影響しない
 
@@ -134,7 +134,7 @@ new FasseInfraStack(app, `FasseInfraStack-${config.envName}`, {
 
 1. `fasse_front` で `flutter build web --dart-define=ENV=stg` を実行し、`build/web` を生成する(認証仕様design.md 3.4節のビルドフレーバーに準拠)
 2. `fasse_infra` で `npx cdk diff` により差分を確認する(ルートCLAUDE.md方針準拠)
-3. `npx cdk deploy` を実行する(`-c env=stg` は省略可。既定値がstgのため)
+3. `npx cdk deploy --all` を実行する(stg環境は `FasseWebAclStack-stg` と `FasseInfraStack-stg` の2スタック構成のため `--all` を指定する。`-c env=stg` は既定値のため省略可)
 4. デプロイ完了後、`CfnOutput` として出力されるCloudFrontのドメイン(`*.cloudfront.net`)にアクセスし、Flutter-Webアプリが表示されることを確認する
 
 ## 6. 未決定事項・今後の検討課題(申し送り事項)

@@ -12,8 +12,8 @@ flowchart TB
     subgraph StgEnv["stg環境(CDKスタック・唯一の永続的バックエンド)"]
         RouteA_Stg["ルートA: AccessKey検証"]
         RouteB_Stg["ルートB: Cognito ID Token検証(JWKS)"]
-        StgAPI["WebAPI受口(stg): 開発初期Lambda(Mock) → 開発後期Fargate(Spring Boot)"]
-        StgDB["データストア(stg): 開発初期DynamoDB(Mock) → 開発後期Aurora MySQL Serverless"]
+        StgAPI["WebAPI受口(stg): Lambda(今後Fargate(Spring Boot)に置き換え)"]
+        StgDB["データストア(stg): DynamoDB(今後Aurora MySQL Serverlessに置き換え)"]
     end
 
     subgraph DevEnv["dev環境(CDKスタック・stg反映前の一時サンドボックス。動作確認後cdk destroyで破棄)"]
@@ -51,7 +51,7 @@ flowchart TB
 
 Cognito・AccessKeyのいずれのログイン経路であっても、最終的にWebAPI受口に渡されるトークンは**KMSの非対称鍵で署名した単一形式のJWT**に統一する(トークン交換 / Token Exchangeパターン)。
 
-これにより、WebAPI受口(Spring Boot / Lambda Mock)は発行元の違い(AccessKeyかCognitoか)を意識せず、常に1つの公開鍵で検証すればよい。マルチ発行者(multi-issuer)対応は不要とする。
+これにより、WebAPI受口(Lambda / Spring Boot)は発行元の違い(AccessKeyかCognitoか)を意識せず、常に1つの公開鍵で検証すればよい。マルチ発行者(multi-issuer)対応は不要とする。
 
 署名鍵(KMSキー)はdev環境・stg環境で単一のものを共用する(REQ-108)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであるため、鍵を分離する必要はなく、両環境で発行されるJWTは互換性を持つ。
 
@@ -97,7 +97,7 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 
 **Cognito User Poolの構築(CDK)**
 
-- User Pool・App Client・Hosted UIドメインは、既存の`lib/fasse_infra-stack.ts`にCDK(`aws-cognito`)で作成する(スタック分割はしない方針を踏襲)。
+- User Pool・App Client・Hosted UIドメインは、`lib/fasse_infra-stack.ts`の`FasseInfraStack`にCDK(`aws-cognito`)で作成する(スタックは分割しない)。
 - 作成するのはstg環境のスタックのみとする。dev環境のスタックは専用のUser Poolを作成せず、stg環境のUser Pool ID/Client IDをCDK contextで受け取って参照する(REQ-107・REQ-110準拠。dev環境は`KMS_KEY_ID`のようにスタック内で自動解決できないため、手動でcontextに設定する)。
 - サインイン方式: ユーザー名(`demo1`, `demo2`のような任意の文字列) + emailエイリアス。ユーザー名をメールアドレス形式に限定しない(`signInAliases: { username: true, email: true }`)。**セルフサインアップは無効**とする(REQ-110)。事前に複数のデモユーザーを運用担当者が`aws cognito-idp admin-create-user`等で作成しておく方式とする(TASK-203)。セルフサインアップを無効にすることで、社外の第三者がHosted UIのURLを知っていても任意にアカウントを作成できない(WAFの方式(IP制限/Basic認証)が未定な現状でも、この経路からの不正アクセスは発生しない)。
 - App Client: publicクライアント(シークレットなし)とし、Authorization Code Grant + PKCEを用いる(スコープ: `openid`, `email`。REQ-110)。fasse_front側がPKCEで実装しているため、これに合わせる。
@@ -113,12 +113,12 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 | KeyUsage | `SIGN_VERIFY` |
 | 対応するJWT alg | `RS256` |
 | 秘密鍵の扱い | KMS内に閉じたまま。エクスポート不可 |
-| 公開鍵の扱い | `aws kms get-public-key` でエクスポートし、PEM形式に変換してWebAPI受口(Spring Boot / Lambda Mock)に配布・設置 |
+| 公開鍵の扱い | `aws kms get-public-key` でエクスポートし、PEM形式に変換してWebAPI受口(Lambda / Spring Boot)に配布・設置 |
 | 環境共用 | dev環境・stg環境で単一のKMSキーを共用する(REQ-108)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであるため、鍵を分離する必要はない |
 
-同一のKMSキーを、開発初期(Lambda Mock発行)から開発後期(Fargate/Spring Boot発行に切り替えた場合)まで、またdev環境・stg環境の間でも継続して使用する。IAMロール(Lambda実行ロール → 将来的にFargateタスクロール)側の権限切り替えのみで対応する。dev環境・stg環境それぞれのIAMロールに対し、共用のKMSキーへの`kms:Sign`・`kms:GetPublicKey`を許可する。
+同一のKMSキーを、dev環境・stg環境の間で、またWebAPI受口をFargate/Spring Bootへ置き換えた後も継続して使用する。置き換え時はIAMロール(Lambda実行ロール → Fargateタスクロール)側の権限切り替えのみで対応する。dev環境・stg環境それぞれのIAMロールに対し、共用のKMSキーへの`kms:Sign`・`kms:GetPublicKey`を許可する。
 
-### 3.3 WebAPI受口の検証ロジック(Spring Boot / Lambda Mock 共通)
+### 3.3 WebAPI受口の検証ロジック(Lambda / Spring Boot 共通)
 
 ```mermaid
 sequenceDiagram
@@ -136,7 +136,7 @@ sequenceDiagram
 ```
 
 - Spring Boot側は`spring-security-oauth2-resource-server`等、標準的なJWT検証ライブラリ・フィルタを使用し、公開鍵は静的ファイル(またはSecretsManager経由)として設置する。
-- Lambda(Mock)側も同一の公開鍵・検証ロジックを用いる(実装言語が異なる場合は、同等のJWTライブラリで代替する)。
+- Lambda側も同一の公開鍵・検証ロジックを用いる(実装言語が異なる場合は、同等のJWTライブラリで代替する)。
 
 ### 3.4 フロントエンド(Flutter-Web)設計
 
@@ -182,21 +182,21 @@ if (env == 'local') {
 
 `.env`は`ENV=local`でのみ参照され、`ENV=stg`/`ENV=prod`でビルドした成果物には`.env`由来の値を一切含めない(Assetからも除外する)。
 
-## 4. 移行方針(Mock → 本番相当構成)
+## 4. WebAPI受口の置き換え方針
 
-| フェーズ | WebAPI受口 | データストア | JWT検証ロジック |
+| 構成 | WebAPI受口 | データストア | JWT検証ロジック |
 |---|---|---|---|
-| 開発初期 | API Gateway + Lambda(Mock) | DynamoDB | KMS公開鍵で検証(共通) |
-| 開発後期〜本番相当 | Fargate(Spring Boot、コンテナ化) | Aurora MySQL Serverless | KMS公開鍵で検証(共通・変更なし) |
+| 現在 | API Gateway + Lambda | DynamoDB | KMS公開鍵で検証(共通) |
+| 置き換え後 | Fargate(Spring Boot、コンテナ化) | Aurora MySQL Serverless | KMS公開鍵で検証(共通・変更なし) |
 
-- JWT発行基盤(API Gateway + Lambda + KMS)自体は移行の前後で変更しない。
+- JWT発行基盤(API Gateway + Lambda + KMS)自体は置き換えの前後で変更しない。
 - WebAPI受口の実装言語・実行基盤が変わっても、検証ロジック(公開鍵検証)は同一のため作り直しは発生しない(REQ-403準拠)。
 - API GatewayからWebAPI受口への接続方式は、Lambda統合 → ALB/VPCリンク経由のFargate統合へ切り替える。
 
 ## 5. 可用性方針
 
-- JWT発行基盤(Lambda)は、既存のFargate(WebAPI本体)の障害に影響されず独立して稼働する(疎結合であることが前提設計のため、追加対応は不要)。
-- Fargate(WebAPI受口)自体の可用性は、タスク数(レプリカ数)を2以上にし、ALBヘルスチェックで担保する。コンテナの分割単位(モノリシック)自体は可用性方針に影響しない。
+- JWT発行基盤(Lambda)は、WebAPI受口(置き換え後はFargate)の障害に影響されず独立して稼働する(疎結合であることが前提設計のため、追加対応は不要)。
+- 置き換え後のFargate(WebAPI受口)自体の可用性は、タスク数(レプリカ数)を2以上にし、ALBヘルスチェックで担保する。コンテナの分割単位(モノリシック)自体は可用性方針に影響しない。
 
 ## 6. セキュリティ設計上の留意事項
 
@@ -212,7 +212,7 @@ if (env == 'local') {
 
 ## 7. 未決定事項・今後の検討課題(申し送り事項)
 
-- リフレッシュトークン方式の導入要否(本番相当移行時に再検討。現時点では未採用)。
+- リフレッシュトークン方式の導入要否(prod環境構築時に再検討。現時点では未採用)。
 - WAF方式(IP制限 / Basic認証)の選定(社内メンバーのアクセス経路が固定IP/VPN経由かどうかに依存。stg環境での必須併用は決定済み、方式は未定)。
 - 本番環境における具体的なJWT有効期限値の最終決定。
 - prod環境のCDKスタック構築時期・詳細要件(現時点ではdev環境・stg環境のみ構築する)。

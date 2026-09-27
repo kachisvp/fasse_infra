@@ -29,7 +29,7 @@ fasse_infra/
 | API 仕様 | `docs/specs/<feature>/openapi.yaml` |
 
 - 新しい機能を追加するときは `docs/specs/` 配下にケバブケースのフォルダ(例: `web-hosting`)を作る
-- ファイル名は `tasks.md` に統一する(`authentication/task.md` は名前を揃える対象)
+- タスクのファイル名は `tasks.md` に統一する
 
 ## 3. 命名規約
 

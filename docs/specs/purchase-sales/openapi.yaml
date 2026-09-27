@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: Fasse 仕入・売上管理API
-  version: "1.0.0-phase1"
+  version: "1.0.0"
   description: |
-    第一弾（APIGateway - Lambda - DynamoDB, stg環境）のAPI仕様。
-    認証なし。詳細はdesign.mdを参照。
+    仕入・売上管理のAPI仕様（APIGateway - Lambda - DynamoDBで提供）。詳細はdesign.mdを参照。
+    全エンドポイントでJWT認証（Authorization: Bearer <JWT>）が必須。詳細はdocs/specs/authenticationを参照。
 
 servers:
   - url: https://{apiId}.execute-api.{region}.amazonaws.com/stg
