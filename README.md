@@ -168,17 +168,24 @@ cdk --version
 
 Cognito, KMSに関連してdeployに手順が必要だったため記録する
 
+`env` 以外のCDK contextは、Git管理対象外の `cdk.context.local.json` に環境ごとにまとめて置く(書式は `cdk.context.local.example.json`、仕様は `docs/specs/authentication/design.md` 3.5節)。
+`cdk diff` / `cdk deploy` のたびに `-c` を渡す必要はない。渡し忘れるとデプロイ済みの値が既定値で上書きされ、全APIが401になる等の事故になるため、`-c` の手入力は一時的な上書きに限る(`-c` の値がファイルより優先される)。
+
 ```
+# 初回: 見本をコピーして値を埋める
+cp cdk.context.local.example.json cdk.context.local.json
+
 # 事前準備: AccessKeyを決める(AWS操作は不要)
 ## デモユーザーごとにAccessKeyを生成
 openssl rand -base64 32
 ## 生成したAccessKeyのSHA-256ハッシュを計算
 echo -n "_accessKey_" | shasum -a 256 | awk '{print $1}'
+## cdk.context.local.json の stg.accessKeyHashMapJson に { "<ハッシュ>": "demo1", ... } の形で書く
+## stg.cognitoCallbackUrls に localhost と CloudFront の auth_callback.html のURLを配列で書く
 
 # 1回目のデプロイ(KMSキー・Cognito User Pool等の箱を作る)
-npx cdk deploy FasseInfraStack-stg --require-approval never \
-  -c accessKeyHashMapJson='{"newhash123...":"demo1","1db15a85...":"demo2","ee6dc7d8...":"demo3"}' \
-  -c cognitoCallbackUrls="http://localhost:5000/auth_callback.html"
+npx cdk diff FasseInfraStack-stg
+npx cdk deploy FasseInfraStack-stg --require-approval never
 
 ## デプロイ完了後、出力(Outputs)に以下が表示されます。
 - JwtSigningKeyId: KMSキーID
@@ -190,11 +197,12 @@ npx cdk deploy FasseInfraStack-stg --require-approval never \
 aws kms get-public-key --key-id <JwtSigningKeyIdの値> --query PublicKey --output text \
   | base64 -d | openssl rsa -pubin -inform DER -outform PEM -out jwt_public_key.pem
 
+# 公開鍵PEMをbase64エンコードし、cdk.context.local.json の stg.jwtPublicKeyPemBase64 に書く
+base64 < jwt_public_key.pem | tr -d '\n'; echo
+
 # 2回目のデプロイ(公開鍵を設定し、検証を有効化する)
-npx cdk deploy FasseInfraStack-stg --require-approval never \
-  -c accessKeyHashMapJson='{"newhash123...":"demo1","1db15a85...":"demo2","ee6dc7d8...":"demo3"}' \
-  -c cognitoCallbackUrls="http://localhost:5000/auth_callback.html" \
-  -c jwtPublicKeyPemBase64="$(base64 < jwt_public_key.pem | tr -d '\n')"
+npx cdk diff FasseInfraStack-stg
+npx cdk deploy FasseInfraStack-stg --require-approval never
 
 > これで items等のAPIも正常にJWTを検証できるようになります。
 
@@ -204,6 +212,13 @@ aws cognito-idp admin-create-user \
   --username demo1 \
   --user-attributes Name=email,Value=demo1@example.com Name=email_verified,Value=true \
   --temporary-password '<初期パスワード>'
+
+# dev環境(stg反映前の一時検証用。確認後はcdk destroyで破棄する)
+## cdk.context.local.json の dev セクションに、stgと同じ accessKeyHashMapJson / jwtPublicKeyPemBase64 と、
+## jwtSigningKeyArn(stgのKMSキーARN)・cognitoUserPoolId・cognitoClientId(stgの値)を書く
+npx cdk diff -c env=dev FasseInfraStack-dev
+npx cdk deploy -c env=dev FasseInfraStack-dev
+npx cdk destroy -c env=dev FasseInfraStack-dev
 
 # fasse_front側の.env設定
 ACCESS_KEY=<demo1用に生成したAccessKeyの値>

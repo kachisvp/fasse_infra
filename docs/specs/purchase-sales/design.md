@@ -206,7 +206,7 @@ CREATE TABLE t_sales_detail (
   - `m_item` / `m_supplier` / `m_menu`: マスタの`id`採番用（カウンタキーはエンティティ名固定）
   - `purchase_no#<purchase_date>`: 仕入伝票番号の採番用（`purchase_date`ごとにリセット）
   - `sales_no#<business_date>`: 売上伝票番号の採番用（`business_date`ごとにリセット）
-- `m_tax_rate`はPK=`tax_category`（`STANDARD`/`REDUCED`/`EXEMPT`）、SK=`valid_from`とする。「ある区分・ある日付時点で有効な税率」は`Query`（PK=区分, SK<=対象日, `ScanIndexForward=false`, `Limit=1`）で取得する。`counters`による連番採番は行わない（複合キーで一意性が定まるため）
+- `m_tax_rate`はPK=`tax_category`（`STANDARD`/`REDUCED`/`EXEMPT`）、SK=`valid_from`とする。「ある区分・ある日付時点で有効な税率」は`Query`（PK=区分, SK<=対象日, `ScanIndexForward=false`, `Limit=1`）で取得できるキー設計とする。ただし現時点ではこの取得をAPIとしては提供しない。クライアントは`GET /tax-rates?tax_category=<区分>`で区分内の全期間を取得し、対象日に有効な行（`valid_from` ≤ 対象日、かつ`valid_to`が未設定または対象日以降）を選ぶ。`counters`による連番採番は行わない（複合キーで一意性が定まるため）
 
 **マスタデータ**
 
@@ -235,6 +235,7 @@ CREATE TABLE t_sales_detail (
 **日付・日時の扱い**
 
 - `purchase_date` / `sales_datetime`等はJST（UTC+9）固定で扱う。UTC変換は行わず、JSTのローカル時刻をそのままISO 8601文字列（例: `2026-07-12`, `2026-07-12T19:30:00+09:00`）としてDynamoDBに保存する
+- `created_at` / `updated_at`はサーバー（Lambda）が付与するシステム時刻であり、上記の業務日付・日時とは扱いを分けて、UTCのISO 8601文字列（例: `2026-07-12T10:30:00.000Z`）で保存する
 
 **ヘッダ+明細の同時登録**
 
@@ -270,10 +271,37 @@ CREATE TABLE t_sales_detail (
 
 - Node.js + TypeScriptで実装する
 
+**入力検証・エラー応答**
+
+検証仕様の正本は[openapi.yaml](./openapi.yaml)とする。検証は各Lambdaで行い、共通処理は`lib/lambda/common/`に置く（API GatewayのRequest Validatorは使わない。SpringBoot置き換え後も同じ検証仕様を保つため）。
+
+- 400を返す条件
+  - リクエストボディがJSONとして解析できない
+  - `*Input`スキーマの必須項目の欠落、型の不一致、`tax_category`のENUM外の値、日付項目（`format: date`）が`YYYY-MM-DD`形式でない
+  - `details`が配列でない、または各明細が`*DetailInput`スキーマを満たさない
+  - `GET /purchases`・`GET /sales`で`from`・`to`が無い、または`YYYY-MM-DD`形式でない
+  - マスタのパスパラメータ`id`が正の整数でない
+  - `tax-rates`のパスパラメータ`taxCategory`がENUM外、または`validFrom`が`YYYY-MM-DD`形式でない
+- 仕入伝票の`purchase_date`、売上伝票の`business_date`は必須とする（伝票番号の採番と日付範囲一覧の基準になるため）
+- 保存する項目
+  - スキーマに定義された項目のみを保存し、未定義の項目は無視する
+  - サーバーが管理する項目（`id`、`purchase_no`/`sales_no`、`created_at`、`updated_at`、`gsi_pk`、明細の`id`・`purchase_id`/`sales_id`）は、リクエストに含まれていても無視する。POST時はサーバーが設定し、PUT時は既存の値を維持する（`updated_at`のみ更新する）
+  - PUTも`*Input`スキーマで検証する（必須項目は省略できない）。任意項目を省略した場合は既存の値を維持する
+  - PUTで`purchase_date`/`business_date`を変更しても伝票番号は採番し直さない（登録時の日付に基づく番号のまま維持する）
+- エラーレスポンスの形式は`{ "message": "<利用者向けメッセージ>", "requestId": "<LambdaのリクエストID>" }`とする。400の場合は`message`に不備のある項目名を含める
+- 予期しない例外: 各Lambda（認証Lambdaを含む）のハンドラ最上位に共通のエラーハンドラを置き、未処理例外を捕捉して500（`message`は固定文言`Internal Server Error`）を返す。スタックトレース等の詳細はレスポンスに含めず、ログにのみ出力する
+- ログ: Lambda Powertoolsの構造化ロガー（`@aws-lambda-powertools/logger`）を用いる。500の原因はERROR、400/401/404はWARN（理由のみ）で出力する。ログレベルは環境変数`POWERTOOLS_LOG_LEVEL`で制御し、既定はINFOとする。リクエストボディ全体・トークン・AccessKeyはログに出力しない
+- 405: Lambdaは未対応のメソッドに405を返すが、API Gatewayが定義済みのメソッドしかルーティングしないため通常は到達しない。openapi.yamlには記載しない
+
+**削除ポリシー**
+
+- DynamoDBテーブル・KMSキー・Cognito User Poolはdev・stgとも`RemovalPolicy.DESTROY`とする。stgは唯一の永続的な環境だが、投入データはテスト用ダミーデータに限定している（`docs/specs/authentication` REQ-105）ため、スタック削除時にデータが失われることを許容する
+- KMSキー・Cognito User Poolの削除ポリシーの理由は`docs/specs/authentication/design.md`（3.1節・3.2節）を参照
+
 **環境分離**
 
 - 構築する環境はstg（唯一の永続的な環境）とdev（stg反映前の一時検証用サンドボックス）の2つとする。prod環境は未構築（`docs/specs/authentication`参照）
-- 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は`lib/config.ts`で定義し、`cdk deploy -c env=<dev|stg>`で選択する（未指定時はstg）
+- 環境ごとに変わる値（アカウントID、リージョン、リソース名等）は`lib/config.ts`で定義し、`cdk deploy -c env=<dev|stg>`で選択する（未指定時はstg）。`dev`/`stg`以外（`prod`を含む）を指定した場合は合成時にエラーとする
 
 ## 未確定事項
 

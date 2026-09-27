@@ -1,6 +1,8 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { createHash } from 'crypto';
+import { HttpError, withErrorHandling } from '../common/errorHandler';
 import { json } from '../common/response';
+import { parseJsonBody } from '../common/validation';
 import { issueJwt } from './jwtIssue';
 
 const KMS_KEY_ID = process.env.KMS_KEY_ID!;
@@ -18,25 +20,21 @@ function hashAccessKey(accessKey: string): string {
   return createHash('sha256').update(accessKey).digest('hex');
 }
 
-// ルートA(AccessKey): docs/specs/authentication REQ-102, design.md 3.1
-export const handler: APIGatewayProxyHandler = async (event) => {
-  let body: { accessKey?: string };
-  try {
-    body = JSON.parse(event.body ?? '{}');
-  } catch {
-    return json(400, { message: 'invalid request body' });
-  }
-
-  const accessKey = body.accessKey;
-  if (!accessKey) {
-    return json(400, { message: 'accessKey is required' });
+// ルートA(AccessKey): docs/specs/authentication REQ-102, design.md 3.1「エラー応答」
+const accessKeyTokenHandler: APIGatewayProxyHandler = async (event) => {
+  const { accessKey } = parseJsonBody(event);
+  if (typeof accessKey !== 'string' || !accessKey) {
+    throw new HttpError(400, 'accessKey is required');
   }
 
   const memberId = loadAccessKeyHashMap()[hashAccessKey(accessKey)];
   if (!memberId) {
-    return json(401, { message: 'invalid accessKey' });
+    throw new HttpError(401, 'invalid accessKey');
   }
 
+  // KMS Signの失敗は未処理例外としてwithErrorHandlingが500を返す
   const token = await issueJwt({ sub: memberId, keyId: KMS_KEY_ID, issuer: JWT_ISSUER });
   return json(200, { token });
 };
+
+export const handler = withErrorHandling(accessKeyTokenHandler);

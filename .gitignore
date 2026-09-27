@@ -11,3 +11,6 @@ cdk.out
 
 # KMSからエクスポートした公開鍵(aws kms get-public-keyでいつでも再取得可能。コミット不要)
 *.pem
+
+# 環境ごとのCDK context(docs/specs/authentication design.md 3.5節)。書式はcdk.context.local.example.jsonを参照
+cdk.context.local.json

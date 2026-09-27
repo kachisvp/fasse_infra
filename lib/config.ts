@@ -1,4 +1,5 @@
-export type EnvName = 'dev' | 'stg' | 'prod';
+// 構築する環境はdev・stgのみ。prod環境は未構築であり、構築時に別途要件化する(docs/steering/tech.md)
+export type EnvName = 'dev' | 'stg';
 
 export interface EnvironmentConfig {
   envName: EnvName;
@@ -22,13 +23,15 @@ const environments: Record<EnvName, EnvironmentConfig> = {
     region: process.env.CDK_STG_REGION ?? 'ap-northeast-1',
     resourcePrefix: 'fasse-stg',
   },
-  prod: {
-    envName: 'prod',
-    account: process.env.CDK_PROD_ACCOUNT,
-    region: process.env.CDK_PROD_REGION ?? 'ap-northeast-1',
-    resourcePrefix: 'fasse-prod',
-  },
 };
+
+// context `env` の値を検証する。未指定時はstg、dev/stg以外は合成時エラーとする
+// (docs/specs/authentication design.md 3.5節)
+export function parseEnvName(value: unknown): EnvName {
+  if (value === undefined) return 'stg';
+  if (value === 'dev' || value === 'stg') return value;
+  throw new Error(`Invalid context "env": ${JSON.stringify(value)}. Use "dev" or "stg".`);
+}
 
 export function getConfig(envName: EnvName): EnvironmentConfig {
   return environments[envName];

@@ -41,7 +41,7 @@
 
 - REQ-301: CloudFront用のWAFv2 WebACL(`scope: CLOUDFRONT`)を作成し、CloudFront Distributionに関連付けること
 - REQ-302: `scope: CLOUDFRONT` のWebACLは `us-east-1` リージョンでのみ作成可能であるため、stgスタックの主リージョン(`ap-northeast-1`)とは別に、`us-east-1` の専用スタックを作成し、`crossRegionReferences: true` によりWebACLのARNをstgスタック側へ受け渡すこと
-- REQ-303: 適用するルールは、API Gateway用WAF(`lib/fasse_infra-stack.ts` の `ApiWebAcl`)と同様、AWSマネージドルール(`AWSManagedRulesCommonRuleSet`)のみとする。IP制限・Basic認証等の追加方式は、認証仕様の「7. 未決定事項」と同一の未決定事項として扱い、本仕様でも決定しない(6節参照)
+- REQ-303: 適用するルールは、API Gateway用WAF(`lib/fasse_infra-stack.ts` の `ApiWebAcl`)と同様、AWSマネージドルール(`AWSManagedRulesCommonRuleSet`)のみとする。IP制限・Basic認証等の追加方式は、認証仕様の「7. 未決定事項」と同一の未決定事項として扱い、本仕様でも決定しない(6節参照)。このため、認証仕様NFR-004が求める「IP制限またはBasic認証」による防御は現時点で未充足であり、暫定的な状態である
 
 ### 4.4 対象環境
 

@@ -1,13 +1,15 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { createPublicKey, verify as cryptoVerify } from 'crypto';
+import { HttpError, withErrorHandling } from '../common/errorHandler';
 import { json } from '../common/response';
+import { parseJsonBody } from '../common/validation';
 import { issueJwt } from './jwtIssue';
 
 const KMS_KEY_ID = process.env.KMS_KEY_ID!;
 const JWT_ISSUER = process.env.JWT_ISSUER ?? 'fasse-auth';
-const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID!;
-const COGNITO_REGION = process.env.COGNITO_REGION!;
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID!;
+const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? '';
+const COGNITO_REGION = process.env.COGNITO_REGION ?? '';
+const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID ?? '';
 
 // dev環境のルートBも、専用のUser Poolを持たずstg環境のこの値を共用する(REQ-107)
 const COGNITO_ISSUER = `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`;
@@ -22,6 +24,9 @@ interface Jwk {
 
 // Lambda実行環境がウォームな間はJWKSを再取得しない(KMSキー同様、都度アクセスを避ける)
 let cachedJwks: Jwk[] | undefined;
+
+// JWKSの取得失敗は利用者の認証情報の問題ではないため401にせず、例外としてwithErrorHandlingで500にする
+// (design.md 3.1節「エラー応答」)
 
 async function getJwks(): Promise<Jwk[]> {
   if (cachedJwks) return cachedJwks;
@@ -83,25 +88,25 @@ async function verifyIdToken(idToken: string): Promise<{ sub: string; email?: st
   return { sub: payload.sub, email: payload.email };
 }
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  let body: { idToken?: string };
-  try {
-    body = JSON.parse(event.body ?? '{}');
-  } catch {
-    return json(400, { message: 'invalid request body' });
+const cognitoTokenHandler: APIGatewayProxyHandler = async (event) => {
+  const { idToken } = parseJsonBody(event);
+  if (typeof idToken !== 'string' || !idToken) {
+    throw new HttpError(400, 'idToken is required');
   }
 
-  const idToken = body.idToken;
-  if (!idToken) {
-    return json(400, { message: 'idToken is required' });
+  // Cognito設定が未設定の間はJWKSを取得せず401を返す(フェイルクローズ。design.md 3.1節「エラー応答」)
+  if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID) {
+    throw new HttpError(401, 'cognito is not configured');
   }
 
   const claims = await verifyIdToken(idToken);
   if (!claims) {
-    return json(401, { message: 'invalid idToken' });
+    throw new HttpError(401, 'invalid idToken');
   }
 
   // Cognitoのsub(ユーザー識別子)を自前JWTのsubに引き継ぐ(REQ-106)
   const token = await issueJwt({ sub: claims.sub, keyId: KMS_KEY_ID, issuer: JWT_ISSUER });
   return json(200, { token });
 };
+
+export const handler = withErrorHandling(cognitoTokenHandler);

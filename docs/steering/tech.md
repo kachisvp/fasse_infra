@@ -11,7 +11,7 @@
 | 認証(JWT 発行) | Lambda + KMS 非対称鍵(RSA_2048 / RS256 署名)。AccessKey 経路と Cognito 経路の 2 つ | dev / stg |
 | 認証(JWT 検証) | 各 Lambda で KMS 公開鍵(PEM)により検証 | dev / stg |
 | ID 基盤 | Cognito User Pool(Hosted UI、Authorization Code Grant + PKCE) | stg のみ(dev は stg を共用) |
-| 防御 | WAFv2(AWS マネージドルール)を API Gateway と CloudFront に関連付け | stg のみ |
+| 防御 | WAFv2(AWS マネージドルール)を API Gateway と CloudFront に関連付け。IP 制限 / Basic 認証は方式未決定のため未導入(暫定) | stg のみ |
 | IaC | AWS CDK v2(TypeScript) | - |
 
 ### 今後の方針
@@ -27,7 +27,8 @@
 | dev | stg へ反映する前の一時的な検証用サンドボックス。動作確認後は `cdk destroy` で破棄する |
 | prod | 未構築。構築時に別途要件化する |
 
-- 環境は `-c env=<dev|stg>` で選択する(未指定時は stg)。環境ごとの値は `lib/config.ts` で管理する
+- 環境は `-c env=<dev|stg>` で選択する(未指定時は stg)。それ以外(`prod` を含む)は合成時にエラーとする。dev 環境では stg の KMS キー ARN を context `jwtSigningKeyArn` で渡す必要がある(context の一覧は `docs/specs/authentication/design.md` 3.5 節)。
+- `env` 以外の context は、Git 管理対象外の `cdk.context.local.json` に環境ごとにまとめておく(`-c` を毎回渡さない。書式は `cdk.context.local.example.json`)。環境ごとの値は `lib/config.ts` で管理する
 - リソース名には `fasse-<env>` のプレフィックスを付ける
 - フロントエンドのビルドフレーバー(`local` / `stg` / `prod`)と AWS 環境名(`dev` / `stg` / `prod`)は別の概念である
 

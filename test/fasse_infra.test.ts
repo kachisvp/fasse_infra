@@ -1,7 +1,21 @@
 import * as cdk from 'aws-cdk-lib/core';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { FasseInfraStack } from '../lib/fasse_infra-stack';
 import { FasseWebAclStack } from '../lib/fasse-web-acl-stack';
+
+const DEV_JWT_SIGNING_KEY_ARN =
+  'arn:aws:kms:ap-northeast-1:123456789012:key/11111111-2222-3333-4444-555555555555';
+
+// IAMポリシーのうちKMSに関するステートメントを、アタッチ先のロールの論理IDとともに列挙する
+function kmsStatements(template: Template): { actions: string[]; roles: string[] }[] {
+  return Object.values(template.findResources('AWS::IAM::Policy')).flatMap((policy) => {
+    const roles = ((policy.Properties.Roles ?? []) as { Ref: string }[]).map((r) => r.Ref);
+    return (policy.Properties.PolicyDocument.Statement as { Action: string | string[] }[])
+      .map((s) => ([] as string[]).concat(s.Action))
+      .filter((actions) => actions.some((a) => a.startsWith('kms:')))
+      .map((actions) => ({ actions, roles }));
+  });
+}
 
 describe('FasseInfraStack', () => {
   let template: Template;
@@ -67,6 +81,20 @@ describe('FasseInfraStack', () => {
       KeySpec: 'RSA_2048',
       KeyUsage: 'SIGN_VERIFY',
     });
+  });
+
+  test('KMS権限はJWT発行Lambda(ルートA・ルートB)のkms:Signのみで、WebAPI受口には付与しない（docs/specs/authentication design.md 3.2節）', () => {
+    const statements = kmsStatements(template);
+    expect(statements).toHaveLength(2);
+    for (const { actions, roles } of statements) {
+      expect(actions).toEqual(['kms:Sign']);
+      expect(roles).toHaveLength(1);
+      expect(roles[0]).toMatch(/^(AccessKeyTokenFunction|CognitoTokenFunction)ServiceRole/);
+    }
+  });
+
+  test('stg環境のKMSキーの削除ポリシーはDESTROY（docs/specs/purchase-sales design.md「削除ポリシー」）', () => {
+    template.hasResource('AWS::KMS::Key', { DeletionPolicy: 'Delete' });
   });
 
   test('stg環境ではWAF(WebACL)が作成され、APIGatewayステージに関連付けられる（NFR-004）', () => {
@@ -135,7 +163,7 @@ describe('FasseInfraStack (dev環境)', () => {
   let devTemplate: Template;
 
   beforeAll(() => {
-    const app = new cdk.App();
+    const app = new cdk.App({ context: { jwtSigningKeyArn: DEV_JWT_SIGNING_KEY_ARN } });
     const stack = new FasseInfraStack(app, 'TestDevStack', {
       env: { region: 'ap-northeast-1' },
       config: {
@@ -145,6 +173,39 @@ describe('FasseInfraStack (dev環境)', () => {
       },
     });
     devTemplate = Template.fromStack(stack);
+  });
+
+  test('dev環境はKMSキーを作成せず、contextで渡されたstg環境のキーARNを使う（REQ-108）', () => {
+    devTemplate.resourceCountIs('AWS::KMS::Key', 0);
+    for (const functionName of ['AccessKeyTokenFunction', 'CognitoTokenFunction']) {
+      const functions = devTemplate.findResources('AWS::Lambda::Function', {
+        Properties: { Environment: { Variables: { KMS_KEY_ID: DEV_JWT_SIGNING_KEY_ARN } } },
+      });
+      expect(Object.keys(functions).some((id) => id.startsWith(functionName))).toBe(true);
+    }
+  });
+
+  test('dev環境でもKMS権限はインポートしたキーへのkms:Signのみ', () => {
+    const statements = kmsStatements(devTemplate);
+    expect(statements).toHaveLength(2);
+    devTemplate.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'kms:Sign', Resource: DEV_JWT_SIGNING_KEY_ARN }),
+        ]),
+      },
+    });
+  });
+
+  test('dev環境でcontext jwtSigningKeyArnが未設定の場合は合成時エラー（REQ-108）', () => {
+    const app = new cdk.App();
+    expect(
+      () =>
+        new FasseInfraStack(app, 'TestDevStackWithoutKey', {
+          env: { region: 'ap-northeast-1' },
+          config: { envName: 'dev', region: 'ap-northeast-1', resourcePrefix: 'fasse-dev-test' },
+        }),
+    ).toThrow(/jwtSigningKeyArn/);
   });
 
   test('dev環境はcdk destroyでの破棄運用のためWAFを作成しない（REQ-109）', () => {

@@ -84,7 +84,8 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 
 **AccessKey管理(ルートA)**
 
-- AccessKeyはメンバーごとに個別発行する(共通の単一AccessKeyは使用しない。REQ-102準拠)。ランダムな文字列(例: `openssl rand -base64 32`)をメンバーごとに生成し、Lambdaの環境変数・SecretsManager・またはDynamoDBの許可リストに登録する。
+- AccessKeyはメンバーごとに個別発行する(共通の単一AccessKeyは使用しない。REQ-102準拠)。ランダムな文字列(例: `openssl rand -base64 32`)をメンバーごとに生成する。
+- 事前登録リストは「AccessKeyのSHA-256ハッシュ(16進) → メンバー識別子」のJSONマップとし、CDK context `accessKeyHashMapJson` で渡してルートAのLambda環境変数 `ACCESS_KEY_HASH_MAP_JSON` に設定する。Lambdaは受け取ったAccessKeyをSHA-256でハッシュ化してマップを引く。平文のAccessKeyはLambda・CloudFormationテンプレートのいずれにも保持しない。
 - 配布はアプリ外の経路(パスワードマネージャーの共有機能、社内チャットの個人DM等)で行い、リポジトリやビルド成果物には含めない。
 - 発行する自前JWTの`sub`には、AccessKeyに対応するメンバー識別子を設定する(REQ-102準拠)。
 - dev環境はstg環境をミラーするため、同一のメンバー別AccessKeyセットをdev環境にも配布する(REQ-108準拠)。
@@ -95,14 +96,28 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 - 検証OK後、トークン内の`sub`(または`email`)を自前JWTの`sub`クレームに引き継ぐ。
 - dev環境のルートBは専用のCognito User Poolを持たず、stg環境のCognito User Poolを共用してID Tokenを検証する(REQ-107準拠)。
 
+**エラー応答(ルートA・ルートB共通)**
+
+| 状況 | ステータス |
+|---|---|
+| リクエストボディがJSONとして不正、または `accessKey` / `idToken` が無い | 400 |
+| AccessKeyが事前登録リストに無い。ID Tokenの形式・署名・`iss`・`aud`・`exp` のいずれかが不正 | 401 |
+| ルートBのCognito設定(User Pool ID・Client ID)が未設定 | 401(フェイルクローズ。JWKSの取得は行わない) |
+| JWKSの取得失敗、KMS `Sign` の失敗、その他の予期しない例外 | 500 |
+
+- JWKSの取得失敗は利用者の認証情報の問題ではないため、401にはしない(401にするとフロントエンドがログイン画面への再遷移を繰り返すため)。
+- 500の場合、レスポンスには内部詳細を含めず、原因はログにERRORレベルで出力する。エラーレスポンスの形式・共通エラーハンドラ・ロガーはWebAPI受口と共通とする(`docs/specs/purchase-sales/design.md`「入力検証・エラー応答」参照)。
+- ログにAccessKey・ID Token・発行したJWTの値を出力しない。
+
 **Cognito User Poolの構築(CDK)**
 
 - User Pool・App Client・Hosted UIドメインは、`lib/fasse_infra-stack.ts`の`FasseInfraStack`にCDK(`aws-cognito`)で作成する(スタックは分割しない)。
-- 作成するのはstg環境のスタックのみとする。dev環境のスタックは専用のUser Poolを作成せず、stg環境のUser Pool ID/Client IDをCDK contextで受け取って参照する(REQ-107・REQ-110準拠。dev環境は`KMS_KEY_ID`のようにスタック内で自動解決できないため、手動でcontextに設定する)。
+- 作成するのはstg環境のスタックのみとする。dev環境のスタックは専用のUser Poolを作成せず、stg環境のUser Pool ID/Client IDをCDK contextで受け取って参照する(REQ-107・REQ-110準拠。stg環境のスタック外の値でありdev環境のスタック内では解決できないため、KMSキーARNと同様に手動でcontextに設定する。3.5節参照)。
 - サインイン方式: ユーザー名(`demo1`, `demo2`のような任意の文字列) + emailエイリアス。ユーザー名をメールアドレス形式に限定しない(`signInAliases: { username: true, email: true }`)。**セルフサインアップは無効**とする(REQ-110)。事前に複数のデモユーザーを運用担当者が`aws cognito-idp admin-create-user`等で作成しておく方式とする(TASK-203)。セルフサインアップを無効にすることで、社外の第三者がHosted UIのURLを知っていても任意にアカウントを作成できない(WAFの方式(IP制限/Basic認証)が未定な現状でも、この経路からの不正アクセスは発生しない)。
 - App Client: publicクライアント(シークレットなし)とし、Authorization Code Grant + PKCEを用いる(スコープ: `openid`, `email`。REQ-110)。fasse_front側がPKCEで実装しているため、これに合わせる。
 - パスワードポリシーは、投入データがテスト用ダミーデータのみであること(REQ-105と同様の前提)に合わせて緩和する(最小文字数のみ要求し、大文字・数字・記号の必須化は行わない)。デモユーザー(`demo1`等)の運用を簡易にするための決定であり、prod環境構築時は別途強度を見直す。
 - コールバックURL・ログアウトURLは、フロントエンドの`auth_callback.html`に対応するURLをCDK contextで指定する(ローカル開発時はFlutterを固定ポートで起動することを前提とする。例: `flutter run -d chrome --web-port=5000`)。
+- User Poolの削除ポリシーは`DESTROY`とする。登録するのはデモユーザーのみであり、スタックを作り直した場合はTASK-203の手順で再作成する。
 - Hosted UIドメインのプレフィックスは`<resourcePrefix>-auth`を既定値とする。Cognitoのドメインはグローバルに一意である必要があるため、衝突した場合はCDK contextで変更する。
 
 ### 3.2 KMSキー設計
@@ -115,8 +130,10 @@ Cognito・AccessKeyのいずれのログイン経路であっても、最終的�
 | 秘密鍵の扱い | KMS内に閉じたまま。エクスポート不可 |
 | 公開鍵の扱い | `aws kms get-public-key` でエクスポートし、PEM形式に変換してWebAPI受口(Lambda / Spring Boot)に配布・設置 |
 | 環境共用 | dev環境・stg環境で単一のKMSキーを共用する(REQ-108)。dev環境はstg環境への変更反映前の一時的な検証用サンドボックスであるため、鍵を分離する必要はない |
+| 作成場所 | stg環境のスタックでのみ作成する。dev環境はcontext `jwtSigningKeyArn` で受け取ったARNを `kms.Key.fromKeyArn` でインポートする(REQ-108) |
+| 削除ポリシー | `DESTROY`。dev環境はstg環境への反映前にだけ使う一時的な環境であり、stg環境のスタックを削除する時点では破棄済みである前提のため。スタックを作り直した場合は公開鍵PEMの再エクスポート・再設定(README「Deploy」)が必要になる |
 
-同一のKMSキーを、dev環境・stg環境の間で、またWebAPI受口をFargate/Spring Bootへ置き換えた後も継続して使用する。置き換え時はIAMロール(Lambda実行ロール → Fargateタスクロール)側の権限切り替えのみで対応する。dev環境・stg環境それぞれのIAMロールに対し、共用のKMSキーへの`kms:Sign`・`kms:GetPublicKey`を許可する。
+同一のKMSキーを、dev環境・stg環境の間で、またWebAPI受口をFargate/Spring Bootへ置き換えた後も継続して使用する。置き換え時はIAMロール(Lambda実行ロール → Fargateタスクロール)側の権限切り替えのみで対応する。dev環境・stg環境それぞれのJWT発行Lambda(ルートA・ルートB)の実行ロールに対し、共用のKMSキーへの`kms:Sign`のみを許可する。公開鍵のエクスポート(`kms:GetPublicKey`)は運用担当者が手動で行う作業であり、Lambdaは実行時に公開鍵を取得しない(REQ-202)ため、Lambdaの実行ロールには付与しない(最小権限)。WebAPI受口のLambdaにはKMSへの権限を付与しない。
 
 ### 3.3 WebAPI受口の検証ロジック(Lambda / Spring Boot 共通)
 
@@ -182,6 +199,39 @@ if (env == 'local') {
 
 `.env`は`ENV=local`でのみ参照され、`ENV=stg`/`ENV=prod`でビルドした成果物には`.env`由来の値を一切含めない(Assetからも除外する)。
 
+### 3.5 CDK context 一覧
+
+| context キー | 対象環境 | 必須 | 内容 |
+|---|---|---|---|
+| `env` | 共通 | 任意(既定 `stg`) | デプロイ対象環境。`dev` / `stg` 以外(`prod` を含む)を指定した場合は合成時にエラーとする |
+| `accessKeyHashMapJson` | dev / stg | 任意(既定 `{}`) | ルートAの事前登録リスト(3.1節)。dev・stgで同一の値を設定する |
+| `jwtPublicKeyPemBase64` | dev / stg | 任意(既定 空) | KMS公開鍵PEMをbase64エンコードした値。未設定の間、WebAPI受口は401を返す |
+| `jwtSigningKeyArn` | dev | 必須 | stg環境で作成したKMSキーのARN。未設定の場合は合成時にエラーとする(REQ-108) |
+| `cognitoUserPoolId` / `cognitoClientId` | dev | 任意 | stg環境のUser Pool ID / App Client ID。未設定の間、ルートBは401を返す |
+| `cognitoRegion` | dev | 任意(既定 スタックのリージョン) | stg環境のUser Poolのリージョン |
+| `cognitoCallbackUrls` | stg | 任意(既定 `http://localhost:5000/auth_callback.html`) | コールバックURL・ログアウトURL(カンマ区切り) |
+| `cognitoDomainPrefix` | stg | 任意(既定 `<resourcePrefix>-auth`) | Hosted UIドメインのプレフィックス |
+
+**ローカルcontextファイル(`cdk.context.local.json`)**
+
+`env` 以外のcontextは、`cdk diff` / `cdk deploy` のたびに `-c` で手入力すると、渡し忘れによりデプロイ済みの値が既定値で上書きされる事故につながる。これを防ぐため、環境ごとの値をリポジトリ直下の `cdk.context.local.json` にまとめて保持できるようにする。
+
+- Git管理対象外とする(`.gitignore` に追加)。値はAccessKeyのハッシュ・公開鍵PEM・URL等でシークレットそのものではないが、環境固有の運用値であるためリポジトリに含めない。書式の見本としてダミー値の `cdk.context.local.example.json` をコミットする
+- 書式: 最上位のキーを環境名(`dev` / `stg`)とし、その下に上表のcontextキーと値を置く。`bin/fasse_infra.ts` は `env` で選んだ環境のセクションだけを読み込む
+  ```json
+  {
+    "stg": {
+      "accessKeyHashMapJson": { "<AccessKeyのSHA-256ハッシュ>": "demo1" },
+      "cognitoCallbackUrls": ["http://localhost:5000/auth_callback.html", "https://<CloudFrontドメイン>/auth_callback.html"],
+      "jwtPublicKeyPemBase64": "<base64エンコードした公開鍵PEM>"
+    },
+    "dev": { "jwtSigningKeyArn": "arn:aws:kms:..." }
+  }
+  ```
+  - 値がオブジェクトの場合はJSON文字列に、配列の場合はカンマ区切りの文字列に変換して渡す(`-c` で渡す場合と同じ形式になる)
+- 優先順位: `-c` で指定した値 > `cdk.context.local.json` の値 > 既定値。一時的に値を差し替えたい場合は `-c` で上書きできる
+- ファイルが無い場合は何もしない(従来どおり `-c` と既定値で動作する)。JSONとして不正な場合、最上位や環境セクションがオブジェクトでない場合、上表に無いキー(`env` を含む)がある場合は、書き間違いを見逃さないよう合成時にエラーとする
+
 ## 4. WebAPI受口の置き換え方針
 
 | 構成 | WebAPI受口 | データストア | JWT検証ロジック |
@@ -204,7 +254,7 @@ if (env == 'local') {
 - KMSキーはdev環境・stg環境で単一のものを共用する(REQ-108)。dev環境はstg環境と同一のJWTトラストルーツを持つ検証用サンドボックスであり、意図的に鍵を分離していない。そのためdev環境も攻撃対象となり得るが、REQ-109により動作確認後は速やかに`cdk destroy`で破棄する運用とし、常時稼働させないことで露出期間を最小化する(dev環境はWAF設置を必須としない)。
 - KMS秘密鍵は非公開のまま運用し、署名は必ずKMS `Sign` APIを経由する(NFR-002)。
 - AccessKeyはメンバー個別発行とし、リポジトリ非管理とする。`.env.sample`(ダミー値)のみをリポジトリに含める(NFR-003)。
-- stg環境では、CloudFront + WAF(IP制限またはBasic認証)を外側の防御として必須で併用する(NFR-004。方式の詳細は別紙セキュリティ設計にて詳細化)。dev環境はREQ-109の破棄運用により露出期間を最小化することを主な防御手段とし、WAF設置は必須としない。prod環境の方針は構築時に別途要件化する。
+- stg環境では、CloudFront + WAF(IP制限またはBasic認証)を外側の防御として必須で併用する(NFR-004。方式の詳細は別紙セキュリティ設計にて詳細化)。現時点では方式が未決定のため、API Gateway・CloudFrontにはAWSマネージドルール(`AWSManagedRulesCommonRuleSet`)のみを暫定適用しており、IP制限/Basic認証は未導入である(7節)。dev環境はREQ-109の破棄運用により露出期間を最小化することを主な防御手段とし、WAF設置は必須としない。prod環境の方針は構築時に別途要件化する。
 - ルートA・ルートBのAPIエンドポイントには、API Gatewayのスロットリング(レート制限: 10 req/sec、バースト制限: 20)を設定する(NFR-005。ブルートフォース・大量リクエスト対策。検証環境の通常利用ではこれを超えるリクエストは想定しない)。
 - KMSキーのローテーションは漏洩が疑われる場合・確認された場合にのみ実施し、定期ローテーションは行わない(NFR-006)。実施時に備え、公開鍵の再配布手順を運用ドキュメントとして整備することを推奨する。
 - メンバー離脱時・AccessKey漏洩疑い時は、速やかに事前登録リストから該当AccessKeyを削除する(NFR-007)。ただしこれは新規JWT発行を防ぐのみであり、削除前に発行済みのJWTは最長30日間有効なまま残る(REQ-105)。即時に無効化する手段が必要な場合は、KMSキーローテーション(NFR-006)も合わせて検討する。

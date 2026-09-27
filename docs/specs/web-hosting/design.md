@@ -67,7 +67,7 @@ const distribution = new cloudfront.Distribution(this, 'WebDistribution', {
     { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
     { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
   ],
-  webAclId: envName === 'stg' ? webAclArn : undefined,
+  webAclId: props.webAclArn,
 });
 ```
 
@@ -75,13 +75,13 @@ const distribution = new cloudfront.Distribution(this, 'WebDistribution', {
 - `viewerProtocolPolicy: REDIRECT_TO_HTTPS` によりHTTP接続をHTTPSへ強制リダイレクトする(REQ-202、NFR-102)
 - `errorResponses` により、Flutter-Webのクライアントサイドルーティングで存在しないパスに直接アクセス・リロードされた場合でも、S3が返す403/404を200 + `index.html` へ読み替え、SPAとして正しく初期化させる(REQ-204)
 - ドメインはCloudFront既定の `*.cloudfront.net` を用い、`domainNames`/`certificate` は設定しない(REQ-205)
-- `webAclId` には後述のus-east-1スタックから受け渡されるWebACLのARNを設定する(REQ-301)。stg環境のみ設定し、それ以外の環境では未設定とする(REQ-401)
+- `webAclId` には後述のus-east-1スタックから受け渡されるWebACLのARNを設定する(REQ-301)。`webAclArn` はstg環境の場合のみ `bin/fasse_infra.ts` から渡されるため、それ以外の環境では未設定となる(REQ-401)
 
 ### 3.3 デプロイ(BucketDeployment)
 
 ```ts
 new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-  sources: [s3deploy.Source.asset('../fasse_front/build/web')],
+  sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'fasse_front', 'build', 'web'))],
   destinationBucket: webBucket,
   distribution,
   distributionPaths: ['/*'],
@@ -89,7 +89,7 @@ new s3deploy.BucketDeployment(this, 'DeployWebsite', {
 });
 ```
 
-- `sources` に `../fasse_front/build/web` を指定することで、`fasse_front` 側でのビルド成果物をそのままCDKアセットとして取り込む(REQ-104配下の実装)
+- `sources` に `../fasse_front/build/web` を指定することで、`fasse_front` 側でのビルド成果物をそのままCDKアセットとして取り込む(REQ-104配下の実装)。パスは `lib/` を基準(`__dirname`)に解決し、`cdk` コマンドを実行するディレクトリに依存しないようにする
 - `distribution`/`distributionPaths: ['/*']` を指定することで、デプロイの都度CloudFrontのキャッシュを自動的に無効化する(REQ-206)。手動での `aws cloudfront create-invalidation` 実行は不要とする
 - `memoryLimit` はCDKの既定値(128MB)のままだと、Flutter-Webビルド成果物(多数の小ファイル・数十MB規模)の同期処理中にLambdaがメモリ不足(`Runtime.OutOfMemory`)でクラッシュする(既定Lambdaメモリ128MBに対しMax Memory Used 127MBで異常終了する)。同期処理に必要なメモリを十分確保するため`1024`(MB)に明示設定する
 
@@ -115,14 +115,14 @@ if (envName === 'stg') {
 
 new FasseInfraStack(app, `FasseInfraStack-${config.envName}`, {
   env: { account: config.account, region: config.region },
-  crossRegionReferences: true,
+  crossRegionReferences: envName === 'stg',
   config,
   webAclArn,
 });
 ```
 
 - `FasseWebAclStack` は `scope: CLOUDFRONT` のWAFv2 WebACLを1つだけ持つ小さなスタックとし、API Gateway用WAF(`ApiWebAcl`、`scope: REGIONAL`)と同様に `AWSManagedRulesCommonRuleSet` のみを適用する(REQ-303)
-- `crossRegionReferences: true` をアプリ・両スタックの双方に設定することで、CDKが内部的にSSMパラメータ経由でARNを解決し、us-east-1のWebACL ARNをap-northeast-1側のCloudFront Distributionへ受け渡す
+- `crossRegionReferences` を `FasseWebAclStack` と(stg環境の) `FasseInfraStack` の双方で有効にすることで、CDKが内部的にSSMパラメータ経由でARNを解決し、us-east-1のWebACL ARNをap-northeast-1側のCloudFront Distributionへ受け渡す。us-east-1スタックを作らないdev環境では、`FasseInfraStack` 側も無効とする
 - 本機能はstg環境のみ対象のため、`envName === 'stg'` の場合にのみ `FasseWebAclStack` を作成する(REQ-401)。dev環境等でこの分岐に入らない場合、`webAclId` は `undefined` となりWAF未関連付けのCloudFrontとなるが、本仕様ではstg以外のフロントエンド配信自体を構築しないため実質的に影響しない
 
 ## 4. IAM・権限方針

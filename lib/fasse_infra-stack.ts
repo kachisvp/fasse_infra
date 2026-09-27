@@ -26,8 +26,9 @@ export class FasseInfraStack extends cdk.Stack {
     super(scope, id, props);
 
     const { resourcePrefix, envName, region } = props.config;
-    const removalPolicy =
-      envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
+    // 投入データはテスト用ダミーデータに限定しているため、dev・stgともスタック削除時にリソースを削除する
+    // (docs/specs/purchase-sales design.md「削除ポリシー」)
+    const removalPolicy = cdk.RemovalPolicy.DESTROY;
 
     // 採番用カウンタテーブル（マスタのid、purchase_no/sales_noの連番管理）
     const countersTable = new dynamodb.Table(this, 'CountersTable', {
@@ -111,7 +112,7 @@ export class FasseInfraStack extends cdk.Stack {
     });
 
     // --- Lambda + API Gateway ---
-    // 第二弾よりJWT認証を導入する(docs/specs/authentication参照)。ルートA/ルートBのAPIエンドポイントには
+    // 全WebAPIはJWT認証を必須とする(docs/specs/authentication参照)。ルートA/ルートBのAPIエンドポイントには
     // NFR-005準拠のスロットリングを設定する(検証環境の通常利用を上回らない一般的な値)。
     const authThrottle = { throttlingRateLimit: 10, throttlingBurstLimit: 20 };
     const api = new apigateway.RestApi(this, 'Api', {
@@ -183,21 +184,34 @@ export class FasseInfraStack extends cdk.Stack {
       : '';
     const jwtIssuer = `${resourcePrefix}-auth`;
 
-    // KMS非対称鍵はdev環境・stg環境で共用する単一のキーとする(REQ-108)。ここでは各環境のスタックが
-    // 自環境用のキーリソースを作成する形にしており、実運用では同一ARNを両環境のLambdaに設定する
-    // (TASK-001参照。鍵ARN自体をcontextで共有する運用に切り替えてもよい)。
-    const jwtSigningKey = new kms.Key(this, 'JwtSigningKey', {
-      keySpec: kms.KeySpec.RSA_2048,
-      keyUsage: kms.KeyUsage.SIGN_VERIFY,
-      removalPolicy,
-    });
-    // 初回デプロイ後、この値を使って公開鍵PEMをエクスポートする(TASK-003)
-    new cdk.CfnOutput(this, 'JwtSigningKeyId', { value: jwtSigningKey.keyId });
+    // KMS非対称鍵はdev環境・stg環境で共用する単一のキーとし、stg環境のスタックでのみ作成する。
+    // dev環境はstg環境で作成済みのキーARNをcontextで受け取りインポートする(REQ-108、design.md 3.2節)。
+    let jwtSigningKey: kms.IKey;
+    if (envName === 'stg') {
+      const key = new kms.Key(this, 'JwtSigningKey', {
+        keySpec: kms.KeySpec.RSA_2048,
+        keyUsage: kms.KeyUsage.SIGN_VERIFY,
+        removalPolicy,
+      });
+      // 初回デプロイ後、この値を使って公開鍵PEMをエクスポートする(TASK-003)
+      new cdk.CfnOutput(this, 'JwtSigningKeyId', { value: key.keyId });
+      jwtSigningKey = key;
+    } else {
+      const jwtSigningKeyArn = this.node.tryGetContext('jwtSigningKeyArn') as string | undefined;
+      if (!jwtSigningKeyArn) {
+        throw new Error(
+          `Context "jwtSigningKeyArn" is required for the ${envName} environment. ` +
+            'Set the ARN of the KMS key created in the stg stack (docs/specs/authentication REQ-108).',
+        );
+      }
+      jwtSigningKey = kms.Key.fromKeyArn(this, 'JwtSigningKey', jwtSigningKeyArn);
+    }
 
     const authFunctionProps: Partial<lambdaNodejs.NodejsFunctionProps> = {
       ...commonFunctionProps,
       environment: {
-        KMS_KEY_ID: jwtSigningKey.keyId,
+        // インポートしたキーでも一意に特定できるよう、キーIDではなくARNを渡す
+        KMS_KEY_ID: jwtSigningKey.keyArn,
         JWT_ISSUER: jwtIssuer,
       },
     };
@@ -274,7 +288,7 @@ export class FasseInfraStack extends cdk.Stack {
     }
 
     // ルートB(Cognito ID Token): dev環境もstg環境のCognito User Poolを共用する(REQ-107)。
-    // User Pool未構築の間は空文字となり、JWKS取得に失敗して401を返す(フェイルクローズ)。
+    // User Pool未構築の間は空文字となり、JWKSを取得せず401を返す(フェイルクローズ。design.md 3.1節「エラー応答」)。
     const cognitoTokenFunction = new lambdaNodejs.NodejsFunction(this, 'CognitoTokenFunction', {
       ...authFunctionProps,
       entry: path.join(__dirname, 'lambda', 'auth', 'cognitoToken.ts'),

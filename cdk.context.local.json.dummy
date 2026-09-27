@@ -1,0 +1,23 @@
+{
+  "stg": {
+    "accessKeyHashMapJson": {
+      "<sha256-hash-of-access-key-1>": "demo1",
+      "<sha256-hash-of-access-key-2>": "demo2"
+    },
+    "cognitoCallbackUrls": [
+      "http://localhost:5000/auth_callback.html",
+      "https://<cloudfront-domain>/auth_callback.html"
+    ],
+    "jwtPublicKeyPemBase64": "<base64-encoded-public-key-pem>"
+  },
+  "dev": {
+    "accessKeyHashMapJson": {
+      "<sha256-hash-of-access-key-1>": "demo1",
+      "<sha256-hash-of-access-key-2>": "demo2"
+    },
+    "jwtPublicKeyPemBase64": "<base64-encoded-public-key-pem>",
+    "jwtSigningKeyArn": "arn:aws:kms:ap-northeast-1:<account-id>:key/<key-id>",
+    "cognitoUserPoolId": "<stg-user-pool-id>",
+    "cognitoClientId": "<stg-app-client-id>"
+  }
+}

@@ -1,9 +1,11 @@
 import { randomUUID } from 'crypto';
-import { APIGatewayProxyHandler } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyHandler } from 'aws-lambda';
 import { GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb } from './dynamodb';
 import { nextSequence } from './counter';
-import { json, notFound } from './response';
+import { HttpError } from './errorHandler';
+import { json } from './response';
+import { applyDefaults, checkFields, isDate, isPlainObject, parseJsonBody, Schema, throwIfInvalid } from './validation';
 
 export interface HeaderDetailConfig {
   headerTableEnvVar: string;
@@ -14,11 +16,13 @@ export interface HeaderDetailConfig {
   detailForeignKey: string; // 明細テーブルのPK（purchase_id / sales_id）
   noField: string; // 伝票番号の項目名（purchase_no / sales_no）
   noPrefix: string; // 伝票番号のプレフィックス（PO / SO）
+  headerSchema: Schema; // ヘッダの入力スキーマ（dateFieldを必須項目として含むこと）
+  detailSchema: Schema; // 明細の入力スキーマ
 }
 
 // t_purchase_header/detail, t_sales_header/detail は
 // 「ヘッダ+明細をTransactWriteItemsで登録」「更新は明細を全洗い替え」という挙動が共通のため、
-// テーブル名・GSI・伝票番号の項目名だけを差し替えて使い回す
+// テーブル名・GSI・伝票番号の項目名・入力スキーマだけを差し替えて使い回す
 export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewayProxyHandler {
   async function fetchDetails(detailTable: string, headerId: string) {
     const result = await ddb.send(
@@ -32,6 +36,34 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
     return result.Items ?? [];
   }
 
+  async function getExistingHeader(headerTable: string, id: string) {
+    const result = await ddb.send(new GetCommand({ TableName: headerTable, Key: { id } }));
+    if (!result.Item) throw new HttpError(404, 'Not Found');
+    return result.Item;
+  }
+
+  // ヘッダ・明細をそれぞれのスキーマで検証し、スキーマの項目のみを返す。
+  // id・伝票番号・created_at・gsi_pk等のサーバー管理項目はここで除去される
+  function parseHeaderDetail(event: APIGatewayProxyEvent) {
+    const { details, ...headerInput } = parseJsonBody(event);
+    const errors: string[] = [];
+    const header = checkFields(config.headerSchema, headerInput, errors);
+    const detailFields: Record<string, unknown>[] = [];
+    if (!Array.isArray(details)) {
+      errors.push('details');
+    } else {
+      details.forEach((detail, index) => {
+        if (!isPlainObject(detail)) {
+          errors.push(`details[${index}]`);
+          return;
+        }
+        detailFields.push(checkFields(config.detailSchema, detail, errors, `details[${index}].`));
+      });
+    }
+    throwIfInvalid(errors);
+    return { header, details: detailFields };
+  }
+
   return async (event) => {
     const headerTable = process.env[config.headerTableEnvVar]!;
     const detailTable = process.env[config.detailTableEnvVar]!;
@@ -43,6 +75,9 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
         if (!id) {
           const from = event.queryStringParameters?.from;
           const to = event.queryStringParameters?.to;
+          if (!isDate(from) || !isDate(to)) {
+            throw new HttpError(400, 'from and to are required in YYYY-MM-DD format');
+          }
           const result = await ddb.send(
             new QueryCommand({
               TableName: headerTable,
@@ -55,19 +90,19 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
           return json(200, result.Items ?? []);
         }
 
-        const header = await ddb.send(new GetCommand({ TableName: headerTable, Key: { id } }));
-        if (!header.Item) return notFound();
+        const header = await getExistingHeader(headerTable, id);
         const details = await fetchDetails(detailTable, id);
-        return json(200, { ...header.Item, details });
+        return json(200, { ...header, details });
       }
 
       case 'POST': {
-        const body = JSON.parse(event.body ?? '{}');
-        const { details, ...headerFields } = body;
+        const input = parseHeaderDetail(event);
+        const headerFields = applyDefaults(config.headerSchema, input.header);
         const headerId = randomUUID();
-        const dateValue = headerFields[config.dateField];
+        // dateFieldはスキーマの必須項目のため、検証済みのここでは必ず存在する
+        const dateValue = headerFields[config.dateField] as string;
         const seq = await nextSequence(`${config.noField}#${dateValue}`);
-        const no = `${config.noPrefix}-${String(dateValue).replace(/-/g, '')}-${String(seq).padStart(4, '0')}`;
+        const no = `${config.noPrefix}-${dateValue.replace(/-/g, '')}-${String(seq).padStart(4, '0')}`;
 
         const header = {
           ...headerFields,
@@ -77,8 +112,8 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
           created_at: now,
           updated_at: now,
         };
-        const detailItems = ((details ?? []) as Record<string, unknown>[]).map((d) => ({
-          ...d,
+        const detailItems = input.details.map((d) => ({
+          ...applyDefaults(config.detailSchema, d),
           id: randomUUID(),
           [config.detailForeignKey]: headerId,
         }));
@@ -95,15 +130,14 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
       }
 
       case 'PUT': {
-        if (!id) return json(400, { message: 'id is required' });
-        const existing = await ddb.send(new GetCommand({ TableName: headerTable, Key: { id } }));
-        if (!existing.Item) return notFound();
+        if (!id) throw new HttpError(400, 'id is required');
+        const input = parseHeaderDetail(event);
+        const existing = await getExistingHeader(headerTable, id);
 
-        const body = JSON.parse(event.body ?? '{}');
-        const { details, ...headerFields } = body;
+        // 伝票番号・created_atは既存の値を維持する。日付を変更しても伝票番号は採番し直さない
         const header = {
-          ...existing.Item,
-          ...headerFields,
+          ...existing,
+          ...input.header,
           id,
           gsi_pk: config.gsiPk,
           updated_at: now,
@@ -111,8 +145,8 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
 
         // 明細は全洗い替え: 既存明細を全件削除し、リクエストのdetailsを全て新規挿入する
         const existingDetails = await fetchDetails(detailTable, id);
-        const newDetailItems = ((details ?? []) as Record<string, unknown>[]).map((d) => ({
-          ...d,
+        const newDetailItems = input.details.map((d) => ({
+          ...applyDefaults(config.detailSchema, d),
           id: randomUUID(),
           [config.detailForeignKey]: id,
         }));
@@ -135,9 +169,8 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
       }
 
       case 'DELETE': {
-        if (!id) return json(400, { message: 'id is required' });
-        const existing = await ddb.send(new GetCommand({ TableName: headerTable, Key: { id } }));
-        if (!existing.Item) return notFound();
+        if (!id) throw new HttpError(400, 'id is required');
+        await getExistingHeader(headerTable, id);
 
         const existingDetails = await fetchDetails(detailTable, id);
         await ddb.send(
@@ -157,7 +190,7 @@ export function createHeaderDetailHandler(config: HeaderDetailConfig): APIGatewa
       }
 
       default:
-        return json(405, { message: 'Method Not Allowed' });
+        throw new HttpError(405, 'Method Not Allowed');
     }
   };
 }

@@ -5,8 +5,8 @@
 ## 基盤準備
 
 - [x] TASK-001 (High): AWS KMS非対称鍵(KeySpec: `RSA_2048`, KeyUsage: `SIGN_VERIFY`)をstg環境のCDKスタックで作成する
-- [ ] TASK-001b (High): dev環境のCDKスタックは、stg環境のKMSキーARNをCDK contextで受け取りインポートする(REQ-108。現在の実装はdev環境でもKMSキーを新規作成しており未準拠)
-- [ ] TASK-002 (High): KMSキーに対するIAMポリシーを設計する(dev環境・stg環境それぞれのLambda実行ロールに対し、共用のKMSキーへの`kms:Sign`・`kms:GetPublicKey`を付与する。現在の実装は`kms:Sign`のみ付与)
+- [x] TASK-001b (High): dev環境のCDKスタックは、stg環境のKMSキーARNをCDK context(`jwtSigningKeyArn`)で受け取り`kms.Key.fromKeyArn`でインポートする。contextが未設定の場合は合成時にエラーとする(REQ-108、design.md 3.2節・3.5節)。単体テストで、dev環境でKMSキーが作成されないこと、context未設定で合成エラーになることを検証する
+- [x] TASK-002 (High): KMSキーに対するIAMポリシー: JWT発行Lambda(ルートA・ルートB)の実行ロールに`kms:Sign`のみを付与し、`kms:GetPublicKey`は付与しない(design.md 3.2節)。単体テストで、IAMポリシーのKMS権限が`kms:Sign`のみであること、WebAPI受口のLambdaにKMS権限が無いことを検証する
 - [x] TASK-003 (High): `aws kms get-public-key` で公開鍵をエクスポートし、PEM形式に変換する手順をドキュメント化する(README「Deploy」)
 - [ ] TASK-004 (High): AccessKeyの生成方法・配布経路(パスワードマネージャー等)を決定し、運用ルールをドキュメント化する(生成手順はREADME記載済み。配布経路の運用ルールは未記載)
 - [ ] TASK-005 (High): メンバーごとに個別のAccessKeyを生成し、事前登録リストに登録する(REQ-102。dev環境・stg環境で同一セットを共用する。登録手順はREADME記載済み。実施状況は要確認)
@@ -15,6 +15,8 @@
 - [ ] TASK-008 (Mid): メンバー離脱・AccessKey漏洩疑い時に、事前登録リストから該当AccessKeyを削除する運用手順をドキュメント化する(発行済みJWTは削除後も最長30日間有効なままである旨を明記する。NFR-007)
 - [x] TASK-009 (High): `lib/config.ts`の`EnvName`型に`dev`を定義し、dev環境用のパラメータ(アカウントID/リージョン/リソース名等)を定義する
 - [x] TASK-010 (High): `bin/fasse_infra.ts`で、CDK context(`-c env=<dev|stg>`)によりデプロイ対象環境を選択できるようにする
+- [x] TASK-011 (High): context `env` が`dev`/`stg`以外(`prod`を含む)の場合に合成時エラーとする(design.md 3.5節)。検証処理は`lib/config.ts`に置き、単体テストを作成する
+- [x] TASK-012 (Mid): `cdk.context.local.json`(Git管理対象外)から環境ごとのcontextを読み込む仕組みを実装する(design.md 3.5節「ローカルcontextファイル」)。`.gitignore` への追加、ダミー値の `cdk.context.local.example.json`、READMEの手順更新、読み込み処理の単体テストを含む
 
 ## JWT発行基盤(API Gateway + Lambda)
 
@@ -28,10 +30,11 @@
 - [x] TASK-107 (Mid): Lambda(ルートB)を実装する: CognitoのJWKS取得・ID Token署名検証ロジック
 - [x] TASK-107b (Mid): dev環境のルートB Lambdaは専用のCognito User Poolを持たず、stg環境のUser Pool(context指定)のJWKSを参照する(REQ-107)
 - [x] TASK-108 (Mid): ルートB検証OK後、Cognitoトークンの`sub`を自前JWTの`sub`に引き継ぐ処理を実装する
-- [ ] TASK-109 (Mid): ルートA・ルートBの単体テスト、異常系(不正AccessKey・不正Token)のテストを作成する
+- [x] TASK-109 (High): ルートA・ルートBの単体テストを作成する(正常系に加え、design.md 3.1節「エラー応答」の各ケース: 不正なボディ、不正AccessKey、不正Token(署名・`iss`・`aud`・`exp`)、Cognito設定未設定、JWKS取得失敗、KMS Sign失敗)
 - [x] TASK-110 (High): ルートA・ルートBのAPI Gatewayにスロットリング(レート制限: 10 req/sec、バースト制限: 20)を設定する(NFR-005)
 - [x] TASK-111 (High): stg環境にWAF(`wafv2.CfnWebACL`)を作成し、API Gatewayに関連付ける(NFR-004。dev環境は対象外)
 - [x] TASK-112 (Mid): API Gatewayの`defaultCorsPreflightOptions`の`allowHeaders`に`Authorization`を含める(`Cors.DEFAULT_HEADERS`を指定)
+- [x] TASK-113 (High): ルートA・ルートBのエラー応答をdesign.md 3.1節「エラー応答」に合わせる(Cognito設定未設定時は401、JWKS取得失敗・KMS Sign失敗は500とし原因をERRORログに出力する。共通エラーハンドラは`docs/specs/purchase-sales` tasks.md「入力検証・エラー応答」で実装するものを使う)。テストはTASK-109で行う
 
 ## Cognito設定(stg環境)
 
@@ -46,6 +49,7 @@
 - [x] TASK-301 (High): 6つのLambda(items/suppliers/menus/tax-rates/purchases/sales)共通のJWT検証処理(KMS公開鍵によるBearer Token検証)を`lib/lambda/common/`配下に実装する
 - [x] TASK-301b (High): TASK-301の共通検証処理(`withJwtAuth`)を、6つのLambdaのハンドラそれぞれに組み込む
 - [x] TASK-302 (High): 検証NG時(署名不正・期限切れ)に401を返す処理を実装する
+- [x] TASK-305 (High): TASK-301/302の単体テストを作成する(`withJwtAuth`・`verifyJwt`: 正常系、Authorizationヘッダ欠落・不正形式、署名不正、期限切れ、`alg`不一致、公開鍵未設定)
 - [ ] TASK-303 (Mid): Spring Boot側にKMS公開鍵(PEM)を用いたJWT検証フィルタを実装する(`spring-security-oauth2-resource-server`等)
 - [ ] TASK-304 (Mid): Spring Boot側の検証ロジックについて、dev環境・stg環境で同一コードパスとなることを確認するテストを作成する
 
